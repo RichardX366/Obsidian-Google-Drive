@@ -13,6 +13,7 @@ import {
 	Setting,
 	TAbstractFile,
 	TFile,
+	Menu,
 } from "obsidian";
 
 interface PluginSettings {
@@ -58,8 +59,29 @@ export default class ObsidianGoogleDrive extends Plugin {
 
 		this.ribbonIcon = this.addRibbonIcon(
 			"refresh-cw",
-			"Push to Google Drive",
-			() => push(this)
+			"Obsidian Google Drive",
+			(event) => {
+				const menu = new Menu();
+
+				menu.addItem((item) =>
+					item
+						.setTitle("Pull from Drive")
+						.setIcon("cloud-download")
+						.onClick(() => {
+							pull(this);
+						})
+				);
+
+				menu.addItem((item) =>
+					item
+						.setTitle("Push to Drive")
+						.setIcon("cloud-upload")
+						.onClick(() => {
+							push(this);
+						})
+				);
+				menu.showAtMouseEvent(event)
+			}
 		);
 
 		this.addCommand({
