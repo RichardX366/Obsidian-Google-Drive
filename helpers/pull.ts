@@ -6,6 +6,8 @@ import {
 	folderMimeType,
 	foldersToBatches,
 	getSyncMessage,
+	isIgnoredPath,
+	pathFromDriveFile,
 } from "./drive";
 import { refreshAccessToken } from "./ky";
 
@@ -26,7 +28,7 @@ export const pull = async (
 	if (!t.accessToken.token) await refreshAccessToken(t);
 
 	const recentlyModified = await t.drive.searchFiles({
-		include: ["id", "modifiedTime", "properties", "mimeType"],
+		include: ["id", "description", "modifiedTime", "properties", "mimeType"],
 		matches: [
 			{
 				modifiedTime: {
@@ -49,6 +51,10 @@ export const pull = async (
 		.map(({ fileId }) => {
 			const path = t.settings.driveIdToPath[fileId];
 			if (!path) return;
+			if (isIgnoredPath(path)) {
+				delete t.settings.driveIdToPath[fileId];
+				return;
+			}
 			delete t.settings.driveIdToPath[fileId];
 
 			const file = vault.getAbstractFileByPath(path);
@@ -71,8 +77,9 @@ export const pull = async (
 	);
 
 	const updateMap = () => {
-		recentlyModified.forEach(({ id, properties }) => {
-			pathToId[properties.path] = id;
+		recentlyModified.forEach((file) => {
+			const path = pathFromDriveFile(file, t.settings.driveIdToPath);
+			if (path && !isIgnoredPath(path)) pathToId[path] = file.id;
 		});
 
 		t.settings.driveIdToPath = Object.fromEntries(
@@ -127,23 +134,29 @@ export const pull = async (
 		);
 
 		if (newFolders.length) {
-			const batches = foldersToBatches(
-				newFolders.map(({ properties }) => properties.path)
-			);
-
-			for (const batch of batches) {
-				await Promise.all(
-					batch.map(async (folder) => {
-						delete t.settings.operations[folder];
-						if (
-							vault.getFolderByPath(folder) ||
-							(await adapter.exists(folder))
-						) {
-							return;
-						}
-						return t.createFolder(folder);
-					})
+			const newFolderPaths = newFolders
+				.map((file) => pathFromDriveFile(file, t.settings.driveIdToPath))
+				.filter(
+					(path): path is string => !!path && !isIgnoredPath(path)
 				);
+
+			if (newFolderPaths.length) {
+				const batches = foldersToBatches(newFolderPaths);
+
+				for (const batch of batches) {
+					await Promise.all(
+						batch.map(async (folder) => {
+							delete t.settings.operations[folder];
+							if (
+								vault.getFolderByPath(folder) ||
+								(await adapter.exists(folder))
+							) {
+								return;
+							}
+							return t.createFolder(folder);
+						})
+					);
+				}
 			}
 		}
 
@@ -155,10 +168,12 @@ export const pull = async (
 
 		await batchAsyncs(
 			newNotes.map((file: FileMetadata) => async () => {
+				const path = pathFromDriveFile(file, t.settings.driveIdToPath);
+				if (!path || isIgnoredPath(path)) return;
+
 				const localFile =
-					vault.getFileByPath(file.properties.path) ||
-					(await adapter.exists(file.properties.path));
-				const operation = t.settings.operations[file.properties.path];
+					vault.getFileByPath(path) || (await adapter.exists(path));
+				const operation = t.settings.operations[path];
 
 				completed++;
 
@@ -167,7 +182,7 @@ export const pull = async (
 				}
 
 				if (localFile && operation === "create") {
-					t.settings.operations[file.properties.path] = "modify";
+					t.settings.operations[path] = "modify";
 					return;
 				}
 
@@ -181,11 +196,7 @@ export const pull = async (
 					return t.modifyFile(localFile, content, file.modifiedTime);
 				}
 
-				return t.upsertFile(
-					file.properties.path,
-					content,
-					file.modifiedTime
-				);
+				return t.upsertFile(path, content, file.modifiedTime);
 			})
 		);
 	};
@@ -198,7 +209,13 @@ export const pull = async (
 				.filter(({ removed }) => removed)
 				.map(async ({ fileId }) => {
 					const path = t.settings.driveIdToPath[fileId];
-					if (!path || vault.getAbstractFileByPath(path)) return;
+					if (
+						!path ||
+						isIgnoredPath(path) ||
+						vault.getAbstractFileByPath(path)
+					) {
+						return;
+					}
 					const stat = await adapter.stat(path);
 					if (!stat) return;
 					return { path, type: stat.type };

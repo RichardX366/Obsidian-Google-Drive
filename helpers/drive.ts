@@ -6,7 +6,7 @@ import { TAbstractFile, TFolder } from "obsidian";
 export interface FileMetadata {
 	id: string;
 	name: string;
-	description: string;
+	description?: string;
 	mimeType: string;
 	starred: boolean;
 	properties: Record<string, string>;
@@ -34,12 +34,103 @@ const BLACKLISTED_CONFIG_FILES = [
 	"workspace-mobile.json",
 ];
 
-const WHITELISTED_PLUGIN_FILES = [
-	"manifest.json",
-	"styles.css",
-	"main.js",
-	"data.json",
-];
+const WHITELISTED_PLUGIN_FILES = ["manifest.json", "styles.css", "main.js"];
+
+const GOOGLE_PROPERTY_VALUE_MAX_BYTES = 124;
+const PATH_DESCRIPTION_PREFIX = "Obsidian path: ";
+const textEncoder = new TextEncoder();
+const IGNORED_SEGMENTS = new Set([
+	".git",
+	".obsidian",
+	".trash",
+	".claude",
+	".claudian",
+	"node_modules",
+	"credentials",
+	"__pycache__",
+	"venv",
+	".venv",
+	"env",
+]);
+const SENSITIVE_PATH_PATTERN =
+	/(^|[\/._ -])(api[-_ ]?key|apikey|secret|token|credential)([\/._ -]|$)/i;
+
+const byteLength = (value: string) => textEncoder.encode(value).length;
+
+const hashPath = (path: string) => {
+	let hash = 2166136261;
+	for (let index = 0; index < path.length; index++) {
+		hash ^= path.charCodeAt(index);
+		hash = Math.imul(hash, 16777619);
+	}
+	return (hash >>> 0).toString(36);
+};
+
+export const isIgnoredPath = (path: string) => {
+	const normalized = path.replace(/^\/+|\/+$/g, "");
+	if (!normalized) return false;
+	const segments = normalized.split("/");
+	return (
+		segments.some((segment) => IGNORED_SEGMENTS.has(segment)) ||
+		segments.some(
+			(segment) => segment === ".DS_Store" || /^\.env($|\.)/.test(segment)
+		) ||
+		SENSITIVE_PATH_PATTERN.test(normalized)
+	);
+};
+
+export const dropOperationsForPath = (
+	operations: Record<string, string>,
+	path: string
+) => {
+	for (const operationPath of Object.keys(operations)) {
+		if (operationPath === path || operationPath.startsWith(path + "/")) {
+			delete operations[operationPath];
+		}
+	}
+};
+
+export const cleanIgnoredOperations = (operations: Record<string, string>) => {
+	let removed = 0;
+	for (const operationPath of Object.keys(operations)) {
+		if (isIgnoredPath(operationPath)) {
+			delete operations[operationPath];
+			removed++;
+		}
+	}
+	return removed;
+};
+
+export const metadataForPath = (
+	path: string,
+	properties: Record<string, string> = {}
+) => {
+	const nextProperties = { ...properties };
+	delete nextProperties.path;
+	if (byteLength(path) <= GOOGLE_PROPERTY_VALUE_MAX_BYTES) {
+		nextProperties.path = path;
+		return { properties: nextProperties };
+	}
+	return {
+		description: PATH_DESCRIPTION_PREFIX + path,
+		properties: {
+			...nextProperties,
+			pathKey: hashPath(path),
+		},
+	};
+};
+
+export const pathFromDriveFile = (
+	file: Pick<FileMetadata, "id" | "properties" | "description">,
+	driveIdToPath: Record<string, string>
+) => {
+	const description = file.description || "";
+	if (file.properties?.path) return file.properties.path;
+	if (driveIdToPath[file.id]) return driveIdToPath[file.id];
+	if (description.startsWith(PATH_DESCRIPTION_PREFIX)) {
+		return description.slice(PATH_DESCRIPTION_PREFIX.length);
+	}
+};
 
 const stringSearchToQuery = (search: StringSearch) => {
 	if (typeof search === "string") return `='${search}'`;
@@ -215,6 +306,11 @@ export const getDriveClient = (t: ObsidianGoogleDrive) => {
 		}
 
 		if (!properties) properties = {};
+		if (properties.path) {
+			const pathMetadata = metadataForPath(properties.path, properties);
+			properties = pathMetadata.properties;
+			description = description || pathMetadata.description;
+		}
 		if (!properties.vault) properties.vault = t.app.vault.getName();
 
 		const folder = await drive
@@ -246,8 +342,20 @@ export const getDriveClient = (t: ObsidianGoogleDrive) => {
 
 		if (!metadata) metadata = {};
 		if (!metadata.properties) metadata.properties = {};
-		if (!metadata.properties.vault) {
-			metadata.properties.vault = t.app.vault.getName();
+		if (metadata.properties.path) {
+			const pathMetadata = metadataForPath(
+				metadata.properties.path,
+				metadata.properties
+			);
+			metadata = {
+				...metadata,
+				description: metadata.description || pathMetadata.description,
+				properties: pathMetadata.properties,
+			};
+		}
+		const metadataProperties = metadata.properties as Record<string, string>;
+		if (!metadataProperties.vault) {
+			metadataProperties.vault = t.app.vault.getName();
 		}
 
 		const form = new FormData();

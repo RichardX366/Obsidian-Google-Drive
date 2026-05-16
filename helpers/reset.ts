@@ -1,6 +1,7 @@
 import ObsidianGoogleDrive from "main";
 import {
 	batchAsyncs,
+	cleanIgnoredOperations,
 	folderMimeType,
 	foldersToBatches,
 	getSyncMessage,
@@ -57,6 +58,7 @@ export const reset = async (t: ObsidianGoogleDrive) => {
 	const syncNotice = await t.startSync();
 
 	await pull(t, true);
+	cleanIgnoredOperations(t.settings.operations);
 
 	const { vault } = t.app;
 

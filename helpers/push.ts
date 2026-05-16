@@ -2,10 +2,12 @@ import ObsidianGoogleDrive from "main";
 import { Modal, Notice, setIcon, Setting, TFile, TFolder } from "obsidian";
 import {
 	batchAsyncs,
+	cleanIgnoredOperations,
 	fileNameFromPath,
 	folderMimeType,
 	foldersToBatches,
 	getSyncMessage,
+	isIgnoredPath,
 } from "./drive";
 import { pull } from "./pull";
 
@@ -242,9 +244,16 @@ class ConfirmUndoModal extends Modal {
 
 export const push = async (t: ObsidianGoogleDrive) => {
 	if (t.syncing) return;
+	if (cleanIgnoredOperations(t.settings.operations)) {
+		await t.saveSettings();
+	}
 	const initialOperations = Object.entries(t.settings.operations).sort(
 		([a], [b]) => (a < b ? -1 : a > b ? 1 : 0)
 	); // Alphabetical
+
+	if (!initialOperations.length) {
+		return new Notice("No eligible changes to push.");
+	}
 
 	const { vault } = t.app;
 	const adapter = vault.adapter;
@@ -258,6 +267,7 @@ export const push = async (t: ObsidianGoogleDrive) => {
 	const syncNotice = await t.startSync();
 
 	await pull(t, true);
+	cleanIgnoredOperations(t.settings.operations);
 
 	const operations = Object.entries(t.settings.operations);
 
@@ -279,20 +289,30 @@ export const push = async (t: ObsidianGoogleDrive) => {
 
 	await Promise.all(
 		configOnDrive.map(async ({ properties }) => {
-			if (!(await adapter.exists(properties.path))) {
+			if (
+				properties.path &&
+				!isIgnoredPath(properties.path) &&
+				!(await adapter.exists(properties.path))
+			) {
 				deletes.push([properties.path, "delete"]);
 			}
 		})
 	);
 
 	if (deletes.length) {
-		const deleteRequest = await t.drive.batchDelete(
-			deletes.map(([path]) => pathsToIds[path])
-		);
+		const idsToDelete = deletes
+			.map(([path]) => pathsToIds[path])
+			.filter((id): id is string => !!id);
+		const deleteRequest = idsToDelete.length
+			? await t.drive.batchDelete(idsToDelete)
+			: true;
 		if (!deleteRequest) {
 			return new Notice("An error occurred deleting Google Drive files.");
 		}
-		deletes.forEach(([path]) => delete t.settings.driveIdToPath[path]);
+		deletes.forEach(([path]) => {
+			const id = pathsToIds[path];
+			if (id) delete t.settings.driveIdToPath[id];
+		});
 	}
 
 	syncNotice.setMessage("Syncing (33%)");
@@ -473,12 +493,6 @@ export const push = async (t: ObsidianGoogleDrive) => {
 			t.settings.driveIdToPath[id] = path;
 			pathsToIds[path] = id;
 		})
-	);
-
-	await t.drive.updateFile(
-		pathsToIds[vault.configDir + "/plugins/google-drive-sync/data.json"],
-		new Blob([JSON.stringify(t.settings, null, 2)]),
-		{ modifiedTime: new Date().toISOString() }
 	);
 
 	t.settings.operations = {};

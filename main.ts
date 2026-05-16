@@ -1,4 +1,10 @@
-import { checkConnection, getDriveClient } from "helpers/drive";
+import {
+	checkConnection,
+	cleanIgnoredOperations,
+	dropOperationsForPath,
+	getDriveClient,
+	isIgnoredPath,
+} from "helpers/drive";
 import { refreshAccessToken } from "helpers/ky";
 import { pull } from "helpers/pull";
 import { push } from "helpers/push";
@@ -141,6 +147,9 @@ export default class ObsidianGoogleDrive extends Plugin {
 			DEFAULT_SETTINGS,
 			await this.loadData()
 		);
+		if (cleanIgnoredOperations(this.settings.operations)) {
+			await this.saveSettings();
+		}
 	}
 
 	saveSettings() {
@@ -150,6 +159,11 @@ export default class ObsidianGoogleDrive extends Plugin {
 	debouncedSaveSettings = debounce(this.saveSettings.bind(this), 500, true);
 
 	handleCreate(file: TAbstractFile) {
+		if (isIgnoredPath(file.path)) {
+			dropOperationsForPath(this.settings.operations, file.path);
+			this.debouncedSaveSettings();
+			return;
+		}
 		if (this.settings.operations[file.path] === "delete") {
 			if (file instanceof TFile) {
 				this.settings.operations[file.path] = "modify";
@@ -163,6 +177,11 @@ export default class ObsidianGoogleDrive extends Plugin {
 	}
 
 	handleDelete(file: TAbstractFile) {
+		if (isIgnoredPath(file.path)) {
+			dropOperationsForPath(this.settings.operations, file.path);
+			this.debouncedSaveSettings();
+			return;
+		}
 		if (this.settings.operations[file.path] === "create") {
 			delete this.settings.operations[file.path];
 		} else {
@@ -172,6 +191,11 @@ export default class ObsidianGoogleDrive extends Plugin {
 	}
 
 	handleModify(file: TFile) {
+		if (isIgnoredPath(file.path)) {
+			dropOperationsForPath(this.settings.operations, file.path);
+			this.debouncedSaveSettings();
+			return;
+		}
 		const operation = this.settings.operations[file.path];
 		if (operation === "create" || operation === "modify") {
 			return;
@@ -181,8 +205,16 @@ export default class ObsidianGoogleDrive extends Plugin {
 	}
 
 	handleRename(file: TAbstractFile, oldPath: string) {
-		this.handleDelete({ ...file, path: oldPath });
-		this.handleCreate(file);
+		if (isIgnoredPath(oldPath)) {
+			dropOperationsForPath(this.settings.operations, oldPath);
+		} else {
+			this.handleDelete({ ...file, path: oldPath });
+		}
+		if (isIgnoredPath(file.path)) {
+			dropOperationsForPath(this.settings.operations, file.path);
+		} else {
+			this.handleCreate(file);
+		}
 		this.debouncedSaveSettings();
 	}
 
