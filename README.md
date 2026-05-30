@@ -74,6 +74,7 @@ Note: Instructions are also on this plugin's homepage with images at [https://og
 -   To sync local changes to Google Drive, click the sync button on the ribbon or run the `Push to Google Drive` command from the command palette
     -   While you do not have to sync before you close Obsidian, we suggest doing so to ensure that Google Drive is up to date and no conflicts occur
     -   This will pull changes before pushing changes to Google Drive
+    -   You can enable automatic pushes in the plugin settings. This is disabled by default. When enabled, the plugin waits 15 seconds after the most recent local change and also checks every 60 seconds for queued changes.
 -   If you want to set your local vault state to the Google Drive state, run the `Set Local Vault to Google Drive` command
 -   If you mess with the vault's files while Obsidian is closed, try to revert any of the changes you made
 

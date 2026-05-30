@@ -21,6 +21,9 @@ interface PluginSettings {
 	driveIdToPath: Record<string, string>;
 	lastSyncedAt: number;
 	changesToken: string;
+	autoPush: boolean;
+	autoPushDelaySeconds: number;
+	autoPushIntervalSeconds: number;
 }
 
 const DEFAULT_SETTINGS: PluginSettings = {
@@ -29,6 +32,9 @@ const DEFAULT_SETTINGS: PluginSettings = {
 	driveIdToPath: {},
 	lastSyncedAt: 0,
 	changesToken: "",
+	autoPush: false,
+	autoPushDelaySeconds: 15,
+	autoPushIntervalSeconds: 60,
 };
 
 export default class ObsidianGoogleDrive extends Plugin {
@@ -40,6 +46,8 @@ export default class ObsidianGoogleDrive extends Plugin {
 	drive = getDriveClient(this);
 	ribbonIcon: HTMLElement;
 	syncing: boolean;
+	autoPushTimeout?: number;
+	autoPushInterval?: number;
 
 	async onload() {
 		const { vault } = this.app;
@@ -120,6 +128,7 @@ export default class ObsidianGoogleDrive extends Plugin {
 		this.registerEvent(vault.on("delete", this.handleDelete.bind(this)));
 		this.registerEvent(vault.on("modify", this.handleModify.bind(this)));
 		this.registerEvent(vault.on("rename", this.handleRename.bind(this)));
+		this.resetAutoPushInterval();
 
 		checkConnection().then(async (connected) => {
 			if (connected) {
@@ -132,6 +141,8 @@ export default class ObsidianGoogleDrive extends Plugin {
 	}
 
 	onunload() {
+		window.clearTimeout(this.autoPushTimeout);
+		window.clearInterval(this.autoPushInterval);
 		return this.saveSettings();
 	}
 
@@ -149,6 +160,35 @@ export default class ObsidianGoogleDrive extends Plugin {
 
 	debouncedSaveSettings = debounce(this.saveSettings.bind(this), 500, true);
 
+	scheduleAutoPush() {
+		window.clearTimeout(this.autoPushTimeout);
+		if (!this.settings.autoPush) return;
+		this.autoPushTimeout = window.setTimeout(
+			() => this.tryAutoPush(),
+			this.settings.autoPushDelaySeconds * 1000
+		);
+	}
+
+	resetAutoPushInterval() {
+		window.clearInterval(this.autoPushInterval);
+		this.autoPushInterval = window.setInterval(
+			() => this.tryAutoPush(),
+			this.settings.autoPushIntervalSeconds * 1000
+		);
+		this.registerInterval(this.autoPushInterval);
+	}
+
+	async tryAutoPush() {
+		if (
+			!this.settings.autoPush ||
+			this.syncing ||
+			!Object.keys(this.settings.operations).length
+		) {
+			return;
+		}
+		await push(this, { confirm: false });
+	}
+
 	handleCreate(file: TAbstractFile) {
 		if (this.settings.operations[file.path] === "delete") {
 			if (file instanceof TFile) {
@@ -160,6 +200,7 @@ export default class ObsidianGoogleDrive extends Plugin {
 			this.settings.operations[file.path] = "create";
 		}
 		this.debouncedSaveSettings();
+		this.scheduleAutoPush();
 	}
 
 	handleDelete(file: TAbstractFile) {
@@ -169,15 +210,18 @@ export default class ObsidianGoogleDrive extends Plugin {
 			this.settings.operations[file.path] = "delete";
 		}
 		this.debouncedSaveSettings();
+		this.scheduleAutoPush();
 	}
 
 	handleModify(file: TFile) {
 		const operation = this.settings.operations[file.path];
 		if (operation === "create" || operation === "modify") {
+			this.scheduleAutoPush();
 			return;
 		}
 		this.settings.operations[file.path] = "modify";
 		this.debouncedSaveSettings();
+		this.scheduleAutoPush();
 	}
 
 	handleRename(file: TAbstractFile, oldPath: string) {
@@ -261,14 +305,22 @@ export default class ObsidianGoogleDrive extends Plugin {
 	}
 
 	async startSync() {
+		this.syncing = true;
 		if (!(await checkConnection())) {
+			this.syncing = false;
 			throw new Notice(
 				"You are not connected to the internet, so you cannot sync right now. Please try syncing once you have connection again."
 			);
 		}
 		this.ribbonIcon.addClass("spin");
-		this.syncing = true;
 		return new Notice("Syncing (0%)", 0);
+	}
+
+	abortSync(syncNotice?: Notice) {
+		this.ribbonIcon.removeClass("spin");
+		this.syncing = false;
+		syncNotice?.hide();
+		this.scheduleAutoPush();
 	}
 
 	async endSync(syncNotice?: Notice, retainConfigChanges = true) {
@@ -292,15 +344,14 @@ export default class ObsidianGoogleDrive extends Plugin {
 
 		const changesToken = await this.drive.getChangesStartToken();
 		if (!changesToken) {
+			this.abortSync(syncNotice);
 			return new Notice(
 				"An error occurred fetching Google Drive changes token."
 			);
 		}
 		this.settings.changesToken = changesToken;
 		await this.saveSettings();
-		this.ribbonIcon.removeClass("spin");
-		this.syncing = false;
-		syncNotice?.hide();
+		this.abortSync(syncNotice);
 	}
 }
 
@@ -374,5 +425,52 @@ class SettingsTab extends PluginSettingTab {
 						);
 					});
 			});
+
+		new Setting(containerEl)
+			.setName("Automatically push local changes")
+			.setDesc(
+				"Push local changes after editing pauses. Automatic pushes still pull remote changes first."
+			)
+			.addToggle((toggle) =>
+				toggle
+					.setValue(this.plugin.settings.autoPush)
+					.onChange(async (value) => {
+						this.plugin.settings.autoPush = value;
+						await this.plugin.saveSettings();
+						this.plugin.scheduleAutoPush();
+					})
+			);
+
+		new Setting(containerEl)
+			.setName("Auto push delay")
+			.setDesc("Seconds to wait after the most recent local change.")
+			.addSlider((slider) =>
+				slider
+					.setLimits(5, 60, 5)
+					.setDynamicTooltip()
+					.setValue(this.plugin.settings.autoPushDelaySeconds)
+					.onChange(async (value) => {
+						this.plugin.settings.autoPushDelaySeconds = value;
+						await this.plugin.saveSettings();
+						this.plugin.scheduleAutoPush();
+					})
+			);
+
+		new Setting(containerEl)
+			.setName("Auto push fallback interval")
+			.setDesc(
+				"Periodically check for queued changes while automatic push is enabled."
+			)
+			.addSlider((slider) =>
+				slider
+					.setLimits(30, 300, 30)
+					.setDynamicTooltip()
+					.setValue(this.plugin.settings.autoPushIntervalSeconds)
+					.onChange(async (value) => {
+						this.plugin.settings.autoPushIntervalSeconds = value;
+						await this.plugin.saveSettings();
+						this.plugin.resetAutoPushInterval();
+					})
+			);
 	}
 }

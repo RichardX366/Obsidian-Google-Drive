@@ -240,23 +240,34 @@ class ConfirmUndoModal extends Modal {
 	}
 }
 
-export const push = async (t: ObsidianGoogleDrive) => {
+export const push = async (
+	t: ObsidianGoogleDrive,
+	{ confirm = true }: { confirm?: boolean } = {}
+) => {
 	if (t.syncing) return;
 	const initialOperations = Object.entries(t.settings.operations).sort(
 		([a], [b]) => (a < b ? -1 : a > b ? 1 : 0)
 	); // Alphabetical
 
+	if (!initialOperations.length) {
+		if (confirm) new Notice("There are no local changes to push.");
+		return;
+	}
+
 	const { vault } = t.app;
 	const adapter = vault.adapter;
 
-	const proceed = await new Promise<boolean>((resolve) => {
-		new ConfirmPushModal(t, initialOperations, resolve).open();
-	});
+	const proceed =
+		!confirm ||
+		(await new Promise<boolean>((resolve) => {
+			new ConfirmPushModal(t, initialOperations, resolve).open();
+		}));
 
 	if (!proceed) return;
 
 	const syncNotice = await t.startSync();
 
+	try {
 	await pull(t, true);
 
 	const operations = Object.entries(t.settings.operations);
@@ -486,4 +497,7 @@ export const push = async (t: ObsidianGoogleDrive) => {
 	await t.endSync(syncNotice, false);
 
 	new Notice("Sync complete!");
+	} finally {
+		if (t.syncing) t.abortSync(syncNotice);
+	}
 };
