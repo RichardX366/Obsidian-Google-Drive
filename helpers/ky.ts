@@ -57,6 +57,19 @@ export const refreshAccessToken = async (t: ObsidianGoogleDrive) => {
 				0
 			);
 		}
+
+		// Only treat the refresh token as invalid on a genuine auth failure.
+		// Transient errors (5xx, timeouts, rate limits) must NOT wipe the token,
+		// otherwise the user is forced to re-add it later. A revoked/expired
+		// refresh token surfaces as 400 (invalid_grant) / 401 / 403.
+		const status = e?.response?.status;
+		if (status !== 400 && status !== 401 && status !== 403) {
+			return new Notice(
+				"Could not fetch a new access token due to a temporary error. Your token is still saved — please try again in a moment or restart Obsidian.",
+				0
+			);
+		}
+
 		t.settings.refreshToken = "";
 		t.accessToken = {
 			token: "",

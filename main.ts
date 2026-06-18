@@ -346,30 +346,44 @@ class SettingsTab extends PluginSettingTab {
 							text.setValue("");
 							return;
 						}
-						if (
-							vault
-								.getAllLoadedFiles()
-								.filter(({ path }) => path !== "/").length > 0
-						) {
-							new Notice(
-								"Your current vault is not empty! If you want our plugin to handle the initial sync, you have to clear out the current vault. Check the readme or website for more details.",
-								0
-							);
-							return cancel();
-						}
 
-						const changesToken =
-							await this.plugin.drive.getChangesStartToken();
-						if (!changesToken) {
-							return new Notice(
-								"An error occurred fetching Google Drive changes token."
-							);
+						// If a changes token already exists, this vault has been
+						// set up before and the user is simply re-authenticating
+						// (e.g. after the refresh token was lost). In that case the
+						// local <-> Drive mapping in data.json is still intact, so we
+						// must NOT require an empty vault or redo the initial sync.
+						const isInitialSetup =
+							!this.plugin.settings.changesToken;
+
+						if (isInitialSetup) {
+							if (
+								vault
+									.getAllLoadedFiles()
+									.filter(({ path }) => path !== "/")
+									.length > 0
+							) {
+								new Notice(
+									"Your current vault is not empty! If you want our plugin to handle the initial sync, you have to clear out the current vault. Check the readme or website for more details.",
+									0
+								);
+								return cancel();
+							}
+
+							const changesToken =
+								await this.plugin.drive.getChangesStartToken();
+							if (!changesToken) {
+								return new Notice(
+									"An error occurred fetching Google Drive changes token."
+								);
+							}
+							this.plugin.settings.changesToken = changesToken;
 						}
-						this.plugin.settings.changesToken = changesToken;
 
 						await this.plugin.saveSettings();
 						new Notice(
-							"Refresh token saved! Reload Obsidian to activate sync.",
+							isInitialSetup
+								? "Refresh token saved! Reload Obsidian to activate sync."
+								: "Refresh token restored! Reload Obsidian to resume sync.",
 							0
 						);
 					});
