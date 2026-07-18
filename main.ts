@@ -40,6 +40,7 @@ export default class ObsidianGoogleDrive extends Plugin {
 	drive = getDriveClient(this);
 	ribbonIcon: HTMLElement;
 	syncing: boolean;
+	lastSyncedAtOnLoad = 0;
 
 	async onload() {
 		const { vault } = this.app;
@@ -114,9 +115,12 @@ export default class ObsidianGoogleDrive extends Plugin {
 			this.app.workspace.on("quit", () => this.saveSettings())
 		);
 
-		this.app.workspace.onLayoutReady(() =>
-			this.registerEvent(vault.on("create", this.handleCreate.bind(this)))
-		);
+		this.app.workspace.onLayoutReady(() => {
+			this.registerEvent(
+				vault.on("create", this.handleCreate.bind(this))
+			);
+			this.reconcileOfflineChanges();
+		});
 		this.registerEvent(vault.on("delete", this.handleDelete.bind(this)));
 		this.registerEvent(vault.on("modify", this.handleModify.bind(this)));
 		this.registerEvent(vault.on("rename", this.handleRename.bind(this)));
@@ -135,12 +139,63 @@ export default class ObsidianGoogleDrive extends Plugin {
 		return this.saveSettings();
 	}
 
+	async reconcileOfflineChanges() {
+		for (let i = 0; i < 600 && this.syncing; i++) {
+			await new Promise((resolve) => setTimeout(resolve, 500));
+		}
+
+		const { operations, driveIdToPath } = this.settings;
+		const cloudPaths = new Set(Object.values(driveIdToPath));
+		if (!cloudPaths.size) return;
+
+		const { configDir } = this.app.vault;
+		const isConfigPath = (path: string) =>
+			path === configDir || path.startsWith(configDir + "/");
+
+		const localPaths = new Set<string>();
+		let changes = 0;
+
+		this.app.vault.getAllLoadedFiles().forEach((file) => {
+			const { path } = file;
+			if (path === "/" || isConfigPath(path)) return;
+			localPaths.add(path);
+			if (operations[path]) return;
+			if (!cloudPaths.has(path)) {
+				operations[path] = "create";
+				changes++;
+			} else if (
+				file instanceof TFile &&
+				file.stat.mtime > this.lastSyncedAtOnLoad
+			) {
+				operations[path] = "modify";
+				changes++;
+			}
+		});
+
+		for (const path of cloudPaths) {
+			if (isConfigPath(path) || localPaths.has(path) || operations[path]) {
+				continue;
+			}
+			if (!(await this.app.vault.adapter.exists(path))) {
+				operations[path] = "delete";
+				changes++;
+			}
+		}
+
+		if (!changes) return;
+		await this.saveSettings();
+		new Notice(
+			`Google Drive Sync: ${changes} offline change(s) queued for push.`
+		);
+	}
+
 	async loadSettings() {
 		this.settings = Object.assign(
 			{},
 			DEFAULT_SETTINGS,
 			await this.loadData()
 		);
+		this.lastSyncedAtOnLoad = this.settings.lastSyncedAt;
 	}
 
 	saveSettings() {
