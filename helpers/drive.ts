@@ -167,7 +167,7 @@ export const getDriveClient = (t: ObsidianGoogleDrive) => {
 		) as FileMetadata[];
 	};
 
-	const getRootFolderId = async () => {
+	const fetchRootFolderId = async () => {
 		const files = await searchFiles(
 			{
 				matches: [{ properties: { obsidian: "vault" } }],
@@ -194,6 +194,18 @@ export const getDriveClient = (t: ObsidianGoogleDrive) => {
 		} else {
 			return files[0].id as string;
 		}
+	};
+
+	let rootFolderIdPromise: Promise<string | undefined> | null = null;
+
+	const getRootFolderId = () => {
+		if (!rootFolderIdPromise) {
+			rootFolderIdPromise = fetchRootFolderId().then((id) => {
+				if (!id) rootFolderIdPromise = null;
+				return id;
+			});
+		}
+		return rootFolderIdPromise;
 	};
 
 	const createFolder = async ({
