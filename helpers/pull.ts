@@ -20,6 +20,7 @@ export const pull = async (
 		if (t.syncing) return;
 		syncNotice = await t.startSync();
 	}
+	try {
 
 	const { vault } = t.app;
 	const adapter = vault.adapter;
@@ -38,14 +39,21 @@ export const pull = async (
 	});
 	if (!recentlyModified) {
 		new Notice('An error occurred fetching Google Drive files.');
-		return;
+		t.abortSync(syncNotice);
+		return false;
 	}
 
 	const changes = await t.drive.getChanges(t.settings.changesToken);
 	if (!changes) {
 		new Notice('An error occurred fetching Google Drive changes.');
-		return;
+		t.abortSync(syncNotice);
+		return false;
 	}
+	const removedPaths = Object.fromEntries(
+		changes
+			.filter(({ removed }) => removed)
+			.map(({ fileId }) => [fileId, t.settings.driveIdToPath[fileId]]),
+	);
 
 	const deletions = changes
 		.filter(({ removed }) => removed)
@@ -64,10 +72,10 @@ export const pull = async (
 		});
 
 	if (!recentlyModified.length && !deletions.length) {
-		if (silenceNotices) return;
-		void t.endSync(syncNotice);
-		new Notice("You're up to date!");
-		return;
+		if (silenceNotices) return true;
+		const ended = await t.endSync(syncNotice);
+		if (ended) new Notice("You're up to date!");
+		return ended;
 	}
 
 	const pathToId = Object.fromEntries(
@@ -205,7 +213,7 @@ export const pull = async (
 			changes
 				.filter(({ removed }) => removed)
 				.map(async ({ fileId }) => {
-					const path = t.settings.driveIdToPath[fileId];
+					const path = removedPaths[fileId];
 					if (!path || vault.getAbstractFileByPath(path)) return;
 					const stat = await adapter.stat(path);
 					if (!stat) return;
@@ -292,9 +300,15 @@ export const pull = async (
 
 	await deleteConfigs();
 
-	if (silenceNotices) return;
+	if (silenceNotices) return true;
 
-	await t.endSync(syncNotice);
-
-	new Notice('Files have been synced from Google Drive!');
+	const ended = await t.endSync(syncNotice);
+	if (ended) new Notice('Files have been synced from Google Drive!');
+	return ended;
+	} catch (error) {
+		t.abortSync(syncNotice);
+		new Notice('Sync failed unexpectedly. Please try again.');
+		console.error('Google Drive pull failed', error);
+		return false;
+	}
 };

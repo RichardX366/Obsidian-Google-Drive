@@ -51,8 +51,9 @@ export const reset = async (t: ObsidianGoogleDrive) => {
 	if (!proceed) return;
 
 	const syncNotice = await t.startSync();
+	try {
 
-	await pull(t, true);
+	if (!(await pull(t, true))) return;
 
 	const { vault } = t.app;
 
@@ -169,7 +170,10 @@ export const reset = async (t: ObsidianGoogleDrive) => {
 
 	t.settings.operations = {};
 
-	await t.endSync(syncNotice);
+	if (!(await t.endSync(syncNotice))) return;
 
 	new Notice('Reset complete.');
+	} finally {
+		if (t.syncing) t.abortSync(syncNotice);
+	}
 };

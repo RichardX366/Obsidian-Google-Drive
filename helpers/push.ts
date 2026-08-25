@@ -264,8 +264,9 @@ export const push = async (t: ObsidianGoogleDrive) => {
 	if (!proceed) return;
 
 	const syncNotice = await t.startSync();
+	try {
 
-	await pull(t, true);
+	if (!(await pull(t, true))) return;
 
 	const operations = Object.entries(t.settings.operations);
 
@@ -299,14 +300,22 @@ export const push = async (t: ObsidianGoogleDrive) => {
 	);
 
 	if (deletes.length) {
-		const deleteRequest = await t.drive.batchDelete(
-			deletes.map(([path]) => pathsToIds[path] as string),
-		);
+		const idsToDelete = deletes.map(([path]) => {
+			const id = pathsToIds[path];
+			return id;
+		});
+		if (idsToDelete.some((id) => !id)) {
+			new Notice('Could not identify all Google Drive files to delete.');
+			return;
+		}
+
+		const uniqueIds = [...new Set(idsToDelete as string[])];
+		const deleteRequest = await t.drive.batchDelete(uniqueIds);
 		if (!deleteRequest) {
 			new Notice('An error occurred deleting Google Drive files.');
 			return;
 		}
-		deletes.forEach(([path]) => delete t.settings.driveIdToPath[path]);
+		uniqueIds.forEach((id) => delete t.settings.driveIdToPath[id]);
 	}
 
 	syncNotice.setMessage('Syncing (33%)');
@@ -502,7 +511,10 @@ export const push = async (t: ObsidianGoogleDrive) => {
 
 	t.settings.operations = {};
 
-	await t.endSync(syncNotice, false);
+	if (!(await t.endSync(syncNotice, false))) return;
 
 	new Notice('Sync complete!');
+	} finally {
+		if (t.syncing) t.abortSync(syncNotice);
+	}
 };

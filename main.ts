@@ -124,11 +124,14 @@ export default class ObsidianGoogleDrive extends Plugin {
 		this.registerEvent(vault.on('rename', this.handleRename.bind(this)));
 
 		void checkConnection().then(async (connected) => {
-			if (connected) {
-				this.syncing = true;
-				this.ribbonIcon.addClass('spin');
-				await pull(this, true);
-				await this.endSync();
+			if (!connected) return;
+
+			this.syncing = true;
+			this.ribbonIcon.addClass('spin');
+			try {
+				if (await pull(this, true)) await this.endSync();
+			} finally {
+				if (this.syncing) this.abortSync();
 			}
 		});
 	}
@@ -276,10 +279,9 @@ export default class ObsidianGoogleDrive extends Plugin {
 	}
 
 	async endSync(syncNotice?: Notice, retainConfigChanges = true) {
+		const syncedAt = Date.now();
 		if (retainConfigChanges) {
 			const configFilesToSync = await this.drive.getConfigFilesToSync();
-
-			this.settings.lastSyncedAt = Date.now();
 
 			await Promise.all(
 				configFilesToSync.map(async (file) =>
@@ -290,8 +292,6 @@ export default class ObsidianGoogleDrive extends Plugin {
 					),
 				),
 			);
-		} else {
-			this.settings.lastSyncedAt = Date.now();
 		}
 
 		const changesToken = await this.drive.getChangesStartToken();
@@ -299,10 +299,19 @@ export default class ObsidianGoogleDrive extends Plugin {
 			new Notice(
 				'An error occurred fetching Google Drive changes token.',
 			);
-			return;
+			this.abortSync(syncNotice);
+			return false;
 		}
+		this.settings.lastSyncedAt = syncedAt;
 		this.settings.changesToken = changesToken;
 		await this.saveSettings();
+		this.ribbonIcon.removeClass('spin');
+		this.syncing = false;
+		syncNotice?.hide();
+		return true;
+	}
+
+	abortSync(syncNotice?: Notice) {
 		this.ribbonIcon.removeClass('spin');
 		this.syncing = false;
 		syncNotice?.hide();

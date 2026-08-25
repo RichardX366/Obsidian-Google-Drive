@@ -393,34 +393,47 @@ export const getDriveClient = (t: ObsidianGoogleDrive) => {
 	};
 
 	const batchDelete = async (ids: string[]) => {
-		const body = new FormData();
+		if (!ids.length) return true;
 
-		// Loop through file IDs to create each delete request
-		ids.forEach((fileId, index) => {
-			const deleteRequest = [
-				`--batch_boundary`,
-				'Content-Type: application/http',
-				'',
-				`DELETE /drive/v3/files/${fileId} HTTP/1.1`,
-				'',
-				'',
-			].join('\r\n');
+		for (let offset = 0; offset < ids.length; offset += 100) {
+			const batch = ids.slice(offset, offset + 100);
+			const boundary = `batch_${crypto.randomUUID()}`;
+			const body =
+				batch
+					.map((fileId, index) =>
+						[
+							`--${boundary}`,
+							'Content-Type: application/http',
+							`Content-ID: <request_${offset + index + 1}>`,
+							'',
+							`DELETE /drive/v3/files/${fileId} HTTP/1.1`,
+							'',
+						].join('\r\n'),
+					)
+					.concat(`--${boundary}--`)
+					.join('\r\n') + '\r\n';
 
-			body.append(`request_${index + 1}`, deleteRequest);
-		});
-
-		body.append('', '--batch_boundary--');
-
-		const result = await drive
-			.post(`batch/drive/v3`, {
+			const response = await drive.post(`batch/drive/v3`, {
 				headers: {
-					'Content-Type': 'multipart/mixed; boundary=batch_boundary',
+					'Content-Type': `multipart/mixed; boundary=${boundary}`,
 				},
 				body,
-			})
-			.text();
-		if (!result) return;
-		return result;
+			});
+			if (!response.ok) return;
+
+			const result = await response.text();
+			const statuses = Array.from(
+				result.matchAll(/HTTP\/1\.1 (\d{3})/g),
+				(match) => Number(match[1]),
+			);
+			if (
+				statuses.length !== batch.length ||
+				statuses.some((status) => status < 200 || status >= 300)
+			) {
+				return;
+			}
+		}
+		return true;
 	};
 
 	const getChangesStartToken = async () => {
