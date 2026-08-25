@@ -1,5 +1,5 @@
-import ObsidianGoogleDrive from '../main';
-import { getDriveKy } from './ky';
+import type ObsidianGoogleDrive from '../main';
+import { getDriveAgent } from './requests';
 import { requestUrl, TAbstractFile, TFolder } from 'obsidian';
 
 export interface FileMetadata {
@@ -110,7 +110,7 @@ export const unSplitPath = (properties: Record<string, string>) => {
 };
 
 export const getDriveClient = (t: ObsidianGoogleDrive) => {
-	const drive = getDriveKy(t);
+	const drive = getDriveAgent(t);
 
 	const getQuery = (matches: QueryMatch[]) =>
 		encodeURIComponent(

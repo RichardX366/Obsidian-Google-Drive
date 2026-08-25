@@ -1,4 +1,4 @@
-import ObsidianGoogleDrive from '../main';
+import type ObsidianGoogleDrive from '../main';
 import { Modal, Notice, setIcon, Setting, TFile, TFolder } from 'obsidian';
 import {
 	batchAsync,

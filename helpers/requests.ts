@@ -1,4 +1,4 @@
-import ObsidianGoogleDrive from '../main';
+import type ObsidianGoogleDrive from '../main';
 import { Notice, requestUrl, RequestUrlResponse } from 'obsidian';
 
 interface RequestOptions {
@@ -53,7 +53,7 @@ const toDriveResponse = (response: RequestUrlResponse): DriveResponse => ({
 	text: async () => response.text,
 });
 
-export const getDriveKy = (t: ObsidianGoogleDrive) => {
+export const getDriveAgent = (t: ObsidianGoogleDrive) => {
 	const send = (
 		method: string,
 		path: string,

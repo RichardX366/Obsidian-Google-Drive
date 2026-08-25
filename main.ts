@@ -1,5 +1,5 @@
 import { checkConnection, getDriveClient } from './helpers/drive';
-import { refreshAccessToken } from './helpers/ky';
+import { refreshAccessToken } from './helpers/requests';
 import { pull } from './helpers/pull';
 import { push } from './helpers/push';
 import { reset } from './helpers/reset';

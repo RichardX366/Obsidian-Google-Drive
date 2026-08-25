@@ -1,4 +1,4 @@
-import ObsidianGoogleDrive from '../main';
+import type ObsidianGoogleDrive from '../main';
 import {
 	batchAsync,
 	folderMimeType,
