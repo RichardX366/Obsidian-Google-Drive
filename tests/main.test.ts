@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
 vi.stubGlobal('window', globalThis);
 
@@ -34,6 +34,7 @@ const createPlugin = () =>
 	Object.assign(Object.create(ObsidianGoogleDrive.prototype), {
 		settings: {
 			refreshToken: 'refresh',
+			accessTokenUrl: 'https://ogd.richardxiong.com/api/access',
 			autoPush: false,
 			operations: {},
 			driveIdToPath: {},
@@ -63,10 +64,6 @@ const createPlugin = () =>
 	}) as ObsidianGoogleDrive;
 
 describe('ObsidianGoogleDrive operation tracking', () => {
-	afterEach(() => {
-		vi.useRealTimers();
-	});
-
 	it('turns recreation of a deleted file into a modification', () => {
 		const plugin = createPlugin();
 		plugin.settings.operations['note.md'] = 'delete';
@@ -79,7 +76,10 @@ describe('ObsidianGoogleDrive operation tracking', () => {
 	});
 
 	it('debounces automatic push scheduling after local changes', () => {
-		vi.useFakeTimers();
+		const setTimeout = vi
+			.spyOn(window, 'setTimeout')
+			.mockReturnValue(1 as never);
+		const clearTimeout = vi.spyOn(window, 'clearTimeout');
 		const plugin = createPlugin();
 		plugin.syncing = false;
 		plugin.settings.autoPush = true;
@@ -87,25 +87,29 @@ describe('ObsidianGoogleDrive operation tracking', () => {
 		Object.assign(file, { path: 'note.md' });
 
 		plugin.handleModify(file);
-		vi.advanceTimersByTime(30_000);
 		plugin.handleModify(file);
 
-		expect(vi.getTimerCount()).toBe(1);
+		expect(setTimeout).toHaveBeenCalledTimes(2);
+		expect(setTimeout).toHaveBeenLastCalledWith(
+			expect.any(Function),
+			30_000,
+		);
+		expect(clearTimeout).toHaveBeenCalledWith(1);
 		plugin.clearAutoPushTimer();
-		expect(vi.getTimerCount()).toBe(0);
+		expect(clearTimeout).toHaveBeenCalledTimes(2);
 	});
 
 	it('does not schedule automatic pushes while syncing or disabled', () => {
-		vi.useFakeTimers();
+		const setTimeout = vi.spyOn(window, 'setTimeout');
 		const plugin = createPlugin();
 		plugin.settings.operations['note.md'] = 'modify';
 
 		plugin.scheduleAutoPush();
-		expect(vi.getTimerCount()).toBe(0);
+		expect(setTimeout).not.toHaveBeenCalled();
 
 		plugin.settings.autoPush = true;
 		plugin.scheduleAutoPush();
-		expect(vi.getTimerCount()).toBe(0);
+		expect(setTimeout).not.toHaveBeenCalled();
 	});
 
 	it('cancels a pending create when the file is deleted', () => {

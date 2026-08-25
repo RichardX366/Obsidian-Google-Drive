@@ -17,6 +17,7 @@ import {
 
 interface PluginSettings {
 	refreshToken: string;
+	accessTokenUrl: string;
 	autoPush: boolean;
 	operations: Record<string, 'create' | 'delete' | 'modify'>;
 	driveIdToPath: Record<string, string>;
@@ -27,6 +28,7 @@ interface PluginSettings {
 
 const DEFAULT_SETTINGS: PluginSettings = {
 	refreshToken: '',
+	accessTokenUrl: 'https://ogd.richardxiong.com/api/access',
 	autoPush: false,
 	operations: {},
 	driveIdToPath: {},
@@ -424,6 +426,25 @@ class SettingsTab extends PluginSettingTab {
 					type: 'toggle',
 					key: 'autoPush',
 					defaultValue: false,
+				},
+			},
+			{
+				name: 'Access token endpoint',
+				desc: 'Service used to exchange the refresh token for a Google access token. The refresh token is sent to this URL. This is just so you can self-host the access token refresher.',
+				control: {
+					type: 'text',
+					key: 'accessTokenUrl',
+					placeholder: 'https://ogd.richardxiong.com/api/access',
+					validate: (value: string) => {
+						try {
+							if (new URL(value).protocol !== 'https:') {
+								return 'Access token endpoint must use HTTPS.';
+							}
+						} catch {
+							return 'Enter a valid access token endpoint URL.';
+						}
+						return;
+					},
 				},
 			},
 		];

@@ -26,7 +26,10 @@ const response = (status: number, json: unknown = {}, text = '') => ({
 
 const createPlugin = () => ({
 	accessToken: { token: '', expiresAt: 0 },
-	settings: { refreshToken: 'saved-token' },
+	settings: {
+		refreshToken: 'saved-token',
+		accessTokenUrl: 'https://tokens.example.com/access',
+	},
 	saveSettings: vi.fn(async () => undefined),
 });
 
@@ -85,6 +88,11 @@ describe('refreshAccessToken', () => {
 			token: 'access',
 			expiresAt: 3_601_000,
 		});
+		expect(mocks.requestUrl).toHaveBeenCalledWith(
+			expect.objectContaining({
+				url: 'https://tokens.example.com/access',
+			}),
+		);
 	});
 });
 
