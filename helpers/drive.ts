@@ -87,16 +87,21 @@ export const fileListToMap = (files: { id: string; name: string }[]) =>
 	Object.fromEntries(files.map(({ id, name }) => [name, id]));
 
 export const splitPath = (path: string) => {
-	const output: { [key: string]: string } = {
-		path: path.substring(0, 100),
-	};
-	path = path.substring(100);
-	let i = 2;
-	while (path.length) {
-		output[`path${i}`] = path.substring(0, 100);
-		path = path.substring(100);
-		i++;
+	const encoder = new TextEncoder();
+	let p = '';
+	const output: Record<string, string> = {};
+	let i = 1;
+	for (const char of path) {
+		if (encoder.encode(p + char).length > 100) {
+			const key = i === 1 ? 'path' : `path${i}`;
+			output[key] = p;
+			p = '';
+			i++;
+		}
+		p += char;
 	}
+	const key = i === 1 ? 'path' : `path${i}`;
+	output[key] = p;
 	return output;
 };
 

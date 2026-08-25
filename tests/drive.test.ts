@@ -31,6 +31,20 @@ describe('Drive path properties', () => {
 			Object.values(splitPath(path)).every((part) => part.length <= 100),
 		).toBe(true);
 	});
+
+	it('splits Unicode paths by UTF-8 byte length', () => {
+		const path = `${'资料/😀/'.repeat(20)}笔记.md`;
+		const properties = splitPath(path);
+		const encoder = new TextEncoder();
+
+		expect(unSplitPath(properties)).toBe(path);
+		expect(Object.keys(properties).length).toBeGreaterThan(1);
+		expect(
+			Object.values(properties).every(
+				(part) => encoder.encode(part).length <= 100,
+			),
+		).toBe(true);
+	});
 });
 
 describe('Drive batch deletion', () => {
