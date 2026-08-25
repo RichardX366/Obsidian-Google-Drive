@@ -1,73 +1,156 @@
-import ky, { Hooks } from "ky";
-import ObsidianGoogleDrive from "main";
-import { Notice } from "obsidian";
-import { checkConnection } from "./drive";
+import ObsidianGoogleDrive from '../main';
+import { Notice, requestUrl, RequestUrlResponse } from 'obsidian';
+import { checkConnection } from './drive';
 
-const getHooks = (t: ObsidianGoogleDrive): Hooks => ({
-	beforeRequest: [
-		async (request) => {
-			if (t.accessToken.token) {
-				if (t.accessToken.expiresAt - Date.now() < 60000) {
-					await refreshAccessToken(t);
-				}
-				request.headers.set(
-					"Authorization",
-					`Bearer ${t.accessToken.token}`
-				);
-			}
-			return request;
-		},
-	],
-	afterResponse: [
-		async (request, options, response) => {
-			if (!response.ok) {
-				new Notice(`Error: ${await response.text()}`);
-				return new Response();
-			}
-			return response;
-		},
-	],
+interface RequestOptions {
+	body?: BodyInit;
+	headers?: Record<string, string>;
+	json?: unknown;
+}
+
+interface DriveResponse {
+	readonly ok: boolean;
+	arrayBuffer(): Promise<ArrayBuffer>;
+	json<T>(): Promise<T>;
+	text(): Promise<string>;
+}
+
+const serializeBody = async (
+	options: RequestOptions,
+): Promise<{ body?: string | ArrayBuffer; contentType?: string }> => {
+	if (options.json !== undefined) {
+		return {
+			body: JSON.stringify(options.json),
+			contentType: 'application/json',
+		};
+	}
+
+	if (options.body === undefined || options.body === null) return {};
+	if (typeof options.body === 'string') return { body: options.body };
+	if (options.body instanceof ArrayBuffer) return { body: options.body };
+	if (ArrayBuffer.isView(options.body)) {
+		return {
+			body: options.body.buffer.slice(
+				options.body.byteOffset,
+				options.body.byteOffset + options.body.byteLength,
+			),
+		};
+	}
+
+	const encoded = new Request('https://localhost', {
+		method: 'POST',
+		body: options.body,
+	});
+	return {
+		body: await encoded.arrayBuffer(),
+		contentType: encoded.headers.get('Content-Type') ?? undefined,
+	};
+};
+
+const toDriveResponse = (response: RequestUrlResponse): DriveResponse => ({
+	ok: response.status >= 200 && response.status < 300,
+	arrayBuffer: async () => response.arrayBuffer,
+	json: async <T>() => response.json as T,
+	text: async () => response.text,
 });
 
 export const getDriveKy = (t: ObsidianGoogleDrive) => {
-	return ky.extend({
-		prefixUrl: "https://www.googleapis.com",
-		hooks: getHooks(t),
-		timeout: 120_000,
-	});
+	const send = (
+		method: string,
+		path: string,
+		options: RequestOptions = {},
+	) => {
+		const response = (async () => {
+			if (
+				t.accessToken.token &&
+				t.accessToken.expiresAt - Date.now() < 60_000
+			) {
+				await refreshAccessToken(t);
+			}
+
+			const { body, contentType } = await serializeBody(options);
+			const headers = { ...options.headers };
+			if (t.accessToken.token) {
+				headers.Authorization = `Bearer ${t.accessToken.token}`;
+			}
+
+			const result = await requestUrl({
+				url: new URL(path, 'https://www.googleapis.com/').toString(),
+				method,
+				headers,
+				body,
+				contentType,
+				throw: false,
+			});
+
+			if (result.status < 200 || result.status >= 300) {
+				new Notice(`Error: ${result.text}`);
+			}
+			return toDriveResponse(result);
+		})();
+
+		return {
+			arrayBuffer: () => response.then((result) => result.arrayBuffer()),
+			json: <T>() => response.then((result) => result.json<T>()),
+			text: () => response.then((result) => result.text()),
+			then: response.then.bind(response),
+		};
+	};
+
+	return {
+		get: (path: string, options?: RequestOptions) =>
+			send('GET', path, options),
+		post: (path: string, options?: RequestOptions) =>
+			send('POST', path, options),
+		patch: (path: string, options?: RequestOptions) =>
+			send('PATCH', path, options),
+		delete: (path: string, options?: RequestOptions) =>
+			send('DELETE', path, options),
+	};
 };
 
-export const refreshAccessToken = async (t: ObsidianGoogleDrive) => {
+export const refreshAccessToken = async (
+	t: ObsidianGoogleDrive,
+	refreshToken?: string,
+) => {
 	try {
-		const { expires_in, access_token } = await ky
-			.post("https://ogd.richardxiong.com/api/access", {
-				json: { refresh_token: t.settings.refreshToken },
-			})
-			.json<any>();
+		const response = await requestUrl({
+			url: 'https://ogd.richardxiong.com/api/access',
+			method: 'POST',
+			contentType: 'application/json',
+			body: JSON.stringify({
+				refresh_token: refreshToken || t.settings.refreshToken,
+			}),
+		});
+		const { expires_in, access_token } = response.json as {
+			expires_in: number;
+			access_token: string;
+		};
 
 		t.accessToken = {
 			token: access_token,
 			expiresAt: Date.now() + expires_in * 1000,
 		};
 		return t.accessToken;
-	} catch (e: any) {
+	} catch {
 		if (!(await checkConnection())) {
-			return new Notice(
+			new Notice(
 				"Something is wrong with your internet connection, so we could not fetch a new access token! Once you're back online, please restart Obsidian.",
-				0
+				0,
 			);
+			return;
 		}
-		t.settings.refreshToken = "";
+		t.settings.refreshToken = '';
 		t.accessToken = {
-			token: "",
+			token: '',
 			expiresAt: 0,
 		};
 
 		new Notice(
-			"Something is wrong with your refresh token, please restart Obsidian and then reset it.",
-			0
+			'Something is wrong with your refresh token, please restart Obsidian and then reset it.',
+			0,
 		);
 		await t.saveSettings();
-		return;
 	}
+	return;
 };

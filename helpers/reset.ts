@@ -1,19 +1,12 @@
-import ObsidianGoogleDrive from "main";
+import ObsidianGoogleDrive from '../main';
 import {
-	batchAsyncs,
+	batchAsync,
 	folderMimeType,
 	foldersToBatches,
 	getSyncMessage,
-} from "./drive";
-import {
-	Notice,
-	TAbstractFile,
-	TFile,
-	TFolder,
-	Modal,
-	Setting,
-} from "obsidian";
-import { pull } from "./pull";
+} from './drive';
+import { Notice, TAbstractFile, TFile, Modal, Setting } from 'obsidian';
+import { pull } from './pull';
 
 export class ConfirmResetModal extends Modal {
 	proceed: (res: boolean) => void;
@@ -22,23 +15,24 @@ export class ConfirmResetModal extends Modal {
 		this.proceed = proceed;
 
 		this.setTitle(
-			"Are you sure you want to reset the data from Google Drive?"
+			'Are you sure you want to reset the data from Google Drive?',
 		);
 		this.setContent(
-			"You'll loose all the local changes to your data and load only the information on your google drive. This step is irreversible."
+			"You'll loose all the local changes to your data and load only the information on your google drive. This step is irreversible.",
 		);
 		new Setting(this.contentEl)
 			.addButton((btn) =>
-				btn.setButtonText("Cancel").onClick(() => this.close())
+				btn.setButtonText('Cancel').onClick(() => this.close()),
 			)
 			.addButton((btn) =>
 				btn
-					.setButtonText("RESET!")
-					.setWarning()
+					.setButtonText('Reset!')
+					.setDestructive()
+					.setCta()
 					.onClick(() => {
 						proceed(true);
 						this.close();
-					})
+					}),
 			);
 	}
 	onClose() {
@@ -61,77 +55,81 @@ export const reset = async (t: ObsidianGoogleDrive) => {
 	const { vault } = t.app;
 
 	const operations = Object.entries(t.settings.operations);
-	const deletes = operations.filter(([_, op]) => op === "delete");
-	const creates = operations.filter(([_, op]) => op === "create");
-	const modifies = operations.filter(([_, op]) => op === "modify");
+	const deletes = operations.filter(([_, op]) => op === 'delete');
+	const creates = operations.filter(([_, op]) => op === 'create');
+	const modifies = operations.filter(([_, op]) => op === 'modify');
 
 	const filePathToId = Object.fromEntries(
-		Object.entries(t.settings.driveIdToPath).map(([id, path]) => [path, id])
+		Object.entries(t.settings.driveIdToPath).map(([id, path]) => [
+			path,
+			id,
+		]),
 	);
 
 	if (creates.length) {
 		await t.drive.deleteFilesMinimumOperations(
 			creates
 				.map(([path]) => vault.getAbstractFileByPath(path))
-				.filter(
-					(file) => file instanceof TAbstractFile
-				) as TAbstractFile[]
+				.filter((file) => file instanceof TAbstractFile),
 		);
 	}
 
-	syncNotice.setMessage("Syncing (33%)");
+	syncNotice.setMessage('Syncing (33%)');
 
 	if (modifies.length) {
 		let completed = 0;
 		const files = modifies.map(([path]) =>
-			vault.getFileByPath(path)
+			vault.getFileByPath(path),
 		) as TFile[];
-		await batchAsyncs(
+		await batchAsync(
 			files.map((file) => async () => {
 				const [onlineFile, metadata] = await Promise.all([
-					t.drive.getFile(filePathToId[file.path]).arrayBuffer(),
-					t.drive.getFileMetadata(filePathToId[file.path]),
+					t.drive
+						.getFile(filePathToId[file.path] as string)
+						.arrayBuffer(),
+					t.drive.getFileMetadata(filePathToId[file.path] as string),
 				]);
 				if (!onlineFile || !metadata) {
 					return new Notice(
-						"An error occurred fetching Google Drive files."
+						'An error occurred fetching Google Drive files.',
 					);
 				}
 
 				completed++;
 				syncNotice.setMessage(
-					getSyncMessage(33, 66, completed, files.length)
+					getSyncMessage(33, 66, completed, files.length),
 				);
 				return t.modifyFile(file, onlineFile, metadata.modifiedTime);
-			})
+			}),
 		);
 	}
 
 	if (deletes.length) {
 		const files = await t.drive.searchFiles({
-			include: ["id", "mimeType", "properties", "modifiedTime"],
+			include: ['id', 'mimeType', 'properties', 'modifiedTime'],
 			matches: deletes.map(([path]) => ({ properties: { path } })),
 		});
 		if (!files) {
-			return new Notice("An error occurred fetching Google Drive files.");
+			new Notice('An error occurred fetching Google Drive files.');
+			return;
 		}
 
 		const pathToFile = Object.fromEntries(
-			files.map((file) => [file.properties.path, file])
+			files.map((file) => [file.properties.path as string, file]),
 		);
 
 		const deletedFolders = deletes.filter(
-			([path]) => pathToFile[path].mimeType === folderMimeType
+			([path]) => pathToFile[path]?.mimeType === folderMimeType,
 		);
 
 		if (deletedFolders.length) {
 			const batches = foldersToBatches(
-				deletedFolders.map(([path]) => path)
+				deletedFolders.map(([path]) => path),
 			);
 
 			for (const batch of batches) {
 				await Promise.all(
-					batch.map((folder) => t.createFolder(folder))
+					batch.map((folder) => t.createFolder(folder)),
 				);
 			}
 		}
@@ -139,29 +137,29 @@ export const reset = async (t: ObsidianGoogleDrive) => {
 		let completed = 0;
 
 		const deletedFiles = deletes.filter(
-			([path]) => pathToFile[path].mimeType !== folderMimeType
+			([path]) => pathToFile[path]?.mimeType !== folderMimeType,
 		);
 
-		await batchAsyncs(
+		await batchAsync(
 			deletedFiles.map(([path]) => async () => {
 				const onlineFile = await t.drive
-					.getFile(filePathToId[path])
+					.getFile(filePathToId[path] as string)
 					.arrayBuffer();
 				if (!onlineFile) {
 					return new Notice(
-						"An error occurred fetching Google Drive files."
+						'An error occurred fetching Google Drive files.',
 					);
 				}
 				completed++;
 				syncNotice.setMessage(
-					getSyncMessage(66, 99, completed, deletedFiles.length)
+					getSyncMessage(66, 99, completed, deletedFiles.length),
 				);
 				return t.createFile(
 					path,
 					onlineFile,
-					pathToFile[path].modifiedTime
+					pathToFile[path]?.modifiedTime,
 				);
-			})
+			}),
 		);
 	}
 
@@ -169,5 +167,5 @@ export const reset = async (t: ObsidianGoogleDrive) => {
 
 	await t.endSync(syncNotice);
 
-	new Notice("Reset complete.");
+	new Notice('Reset complete.');
 };

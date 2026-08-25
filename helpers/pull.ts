@@ -1,19 +1,19 @@
-import ObsidianGoogleDrive from "main";
-import { Notice, TFile, TFolder } from "obsidian";
+import ObsidianGoogleDrive from '../main';
+import { Notice, TFile, TFolder } from 'obsidian';
 import {
-	batchAsyncs,
+	batchAsync,
 	FileMetadata,
 	folderMimeType,
 	foldersToBatches,
 	getSyncMessage,
-} from "./drive";
-import { refreshAccessToken } from "./ky";
+} from './drive';
+import { refreshAccessToken } from './ky';
 
 export const pull = async (
 	t: ObsidianGoogleDrive,
-	silenceNotices?: boolean
+	silenceNotices?: boolean,
 ) => {
-	let syncNotice: any = null;
+	let syncNotice = undefined;
 
 	if (!silenceNotices) {
 		if (t.syncing) return;
@@ -26,7 +26,7 @@ export const pull = async (
 	if (!t.accessToken.token) await refreshAccessToken(t);
 
 	const recentlyModified = await t.drive.searchFiles({
-		include: ["id", "modifiedTime", "properties", "mimeType"],
+		include: ['id', 'modifiedTime', 'properties', 'mimeType'],
 		matches: [
 			{
 				modifiedTime: {
@@ -36,12 +36,14 @@ export const pull = async (
 		],
 	});
 	if (!recentlyModified) {
-		return new Notice("An error occurred fetching Google Drive files.");
+		new Notice('An error occurred fetching Google Drive files.');
+		return;
 	}
 
 	const changes = await t.drive.getChanges(t.settings.changesToken);
 	if (!changes) {
-		return new Notice("An error occurred fetching Google Drive changes.");
+		new Notice('An error occurred fetching Google Drive changes.');
+		return;
 	}
 
 	const deletions = changes
@@ -53,7 +55,7 @@ export const pull = async (
 
 			const file = vault.getAbstractFileByPath(path);
 
-			if (!file && t.settings.operations[path] === "delete") {
+			if (!file && t.settings.operations[path] === 'delete') {
 				delete t.settings.operations[path];
 				return;
 			}
@@ -62,21 +64,25 @@ export const pull = async (
 
 	if (!recentlyModified.length && !deletions.length) {
 		if (silenceNotices) return;
-		t.endSync(syncNotice);
-		return new Notice("You're up to date!");
+		void t.endSync(syncNotice);
+		new Notice("You're up to date!");
+		return;
 	}
 
 	const pathToId = Object.fromEntries(
-		Object.entries(t.settings.driveIdToPath).map(([id, path]) => [path, id])
+		Object.entries(t.settings.driveIdToPath).map(([id, path]) => [
+			path,
+			id,
+		]),
 	);
 
 	const updateMap = () => {
 		recentlyModified.forEach(({ id, properties }) => {
-			pathToId[properties.path] = id;
+			pathToId[properties.path as string] = id;
 		});
 
 		t.settings.driveIdToPath = Object.fromEntries(
-			Object.entries(pathToId).map(([path, id]) => [id, path])
+			Object.entries(pathToId).map(([path, id]) => [id, path]),
 		);
 	};
 
@@ -86,14 +92,14 @@ export const pull = async (
 		const deletedFiles = deletions
 			.filter((file) => file instanceof TFile)
 			.filter((file: TFile) => {
-				if (t.settings.operations[file.path] === "modify") {
+				if (t.settings.operations[file.path] === 'modify') {
 					if (!pathToId[file.path]) {
-						t.settings.operations[file.path] = "create";
+						t.settings.operations[file.path] = 'create';
 					}
 					return;
 				}
 				return true;
-			}) as TFile[];
+			});
 
 		const deletionPaths = deletions.map((file) => file?.path);
 
@@ -103,13 +109,14 @@ export const pull = async (
 				if (pathToId[folder.path]) return;
 				if (
 					folder.children.find(
-						({ path }) => !deletionPaths.includes(path)
+						({ path }) => !deletionPaths.includes(path),
 					)
 				) {
 					return true;
 				}
-				t.settings.operations[folder.path] = "create";
-			}) as TFolder[];
+				t.settings.operations[folder.path] = 'create';
+				return;
+			});
 
 		await t.drive.deleteFilesMinimumOperations([
 			...deletedFolders,
@@ -119,16 +126,16 @@ export const pull = async (
 
 	await deleteFiles();
 
-	syncNotice?.setMessage("Syncing (33%)");
+	syncNotice?.setMessage('Syncing (33%)');
 
 	const upsertFiles = async () => {
 		const newFolders = recentlyModified.filter(
-			({ mimeType }) => mimeType === folderMimeType
+			({ mimeType }) => mimeType === folderMimeType,
 		);
 
 		if (newFolders.length) {
 			const batches = foldersToBatches(
-				newFolders.map(({ properties }) => properties.path)
+				newFolders.map(({ properties }) => properties.path as string),
 			);
 
 			for (const batch of batches) {
@@ -142,7 +149,7 @@ export const pull = async (
 							return;
 						}
 						return t.createFolder(folder);
-					})
+					}),
 				);
 			}
 		}
@@ -150,31 +157,33 @@ export const pull = async (
 		let completed = 0;
 
 		const newNotes = recentlyModified.filter(
-			({ mimeType }) => mimeType !== folderMimeType
+			({ mimeType }) => mimeType !== folderMimeType,
 		);
 
-		await batchAsyncs(
+		await batchAsync(
 			newNotes.map((file: FileMetadata) => async () => {
 				const localFile =
-					vault.getFileByPath(file.properties.path) ||
-					(await adapter.exists(file.properties.path));
-				const operation = t.settings.operations[file.properties.path];
+					vault.getFileByPath(file.properties.path as string) ||
+					(await adapter.exists(file.properties.path as string));
+				const operation =
+					t.settings.operations[file.properties.path as string];
 
 				completed++;
 
-				if (localFile && operation === "modify") {
+				if (localFile && operation === 'modify') {
 					return;
 				}
 
-				if (localFile && operation === "create") {
-					t.settings.operations[file.properties.path] = "modify";
+				if (localFile && operation === 'create') {
+					t.settings.operations[file.properties.path as string] =
+						'modify';
 					return;
 				}
 
 				const content = await t.drive.getFile(file.id).arrayBuffer();
 
 				syncNotice?.setMessage(
-					getSyncMessage(33, 100, completed, newNotes.length)
+					getSyncMessage(33, 100, completed, newNotes.length),
 				);
 
 				if (localFile instanceof TFile) {
@@ -182,11 +191,11 @@ export const pull = async (
 				}
 
 				return t.upsertFile(
-					file.properties.path,
+					file.properties.path as string,
 					content,
-					file.modifiedTime
+					file.modifiedTime,
 				);
-			})
+			}),
 		);
 	};
 
@@ -202,67 +211,72 @@ export const pull = async (
 					const stat = await adapter.stat(path);
 					if (!stat) return;
 					return { path, type: stat.type };
-				})
+				}),
 		);
 
 		let configDeletionsFiltered = configDeletions.filter(Boolean) as {
 			path: string;
-			type: "file" | "folder";
+			type: 'file' | 'folder';
 		}[];
 
-		const trashMethod = (vault as any).getConfig("trashOption");
+		const trashMethod = (
+			vault as unknown as {
+				getConfig: (key: 'trashOption') => 'local' | 'system';
+			}
+		).getConfig('trashOption');
 
-		if (trashMethod === "local" || trashMethod === "system") {
+		if (trashMethod === 'local' || trashMethod === 'system') {
 			const deletionMethod =
-				trashMethod === "local"
-					? adapter.trashLocal
-					: adapter.trashSystem;
+				trashMethod === 'local'
+					? adapter.trashLocal.bind(adapter)
+					: adapter.trashSystem.bind(adapter);
 
 			const folders = configDeletionsFiltered.filter(
-				(file) => file.type === "folder"
+				(file) => file.type === 'folder',
 			);
 
 			if (folders.length) {
 				const maxDepth = Math.max(
-					...folders.map(({ path }) => path.split("/").length)
+					...folders.map(({ path }) => path.split('/').length),
 				);
 
 				for (let depth = 1; depth <= maxDepth; depth++) {
 					const foldersToDelete = configDeletionsFiltered.filter(
 						(file) =>
-							file.type === "folder" &&
-							file.path.split("/").length === depth
+							file.type === 'folder' &&
+							file.path.split('/').length === depth,
 					);
 					await Promise.all(
-						foldersToDelete.map(({ path }) => deletionMethod(path))
+						foldersToDelete.map(({ path }) => deletionMethod(path)),
 					);
 					foldersToDelete.forEach(
 						(folder) =>
 							(configDeletionsFiltered =
 								configDeletionsFiltered.filter(
 									({ path }) =>
-										!path.startsWith(folder.path + "/") &&
-										path !== folder.path
-								))
+										!path.startsWith(folder.path + '/') &&
+										path !== folder.path,
+								)),
 					);
 				}
 			}
 
-			return Promise.all(
-				configDeletionsFiltered.map(({ path }) => deletionMethod(path))
+			await Promise.all(
+				configDeletionsFiltered.map(({ path }) => deletionMethod(path)),
 			);
+			return;
 		}
 
 		const deletedFiles = configDeletionsFiltered.filter(
-			(file) => file.type === "file"
+			(file) => file.type === 'file',
 		);
 		await Promise.all(deletedFiles.map(({ path }) => adapter.remove(path)));
 
 		const deletedFolders = configDeletionsFiltered.filter(
-			(file) => file.type === "folder"
+			(file) => file.type === 'folder',
 		);
 		const batches = foldersToBatches(
-			deletedFolders.map(({ path }) => path)
+			deletedFolders.map(({ path }) => path),
 		);
 		batches.reverse();
 
@@ -271,8 +285,8 @@ export const pull = async (
 				batch.map(async (folder) => {
 					const list = await adapter.list(folder);
 					if (list.files.length + list.folders.length) return;
-					adapter.rmdir(folder, false);
-				})
+					void adapter.rmdir(folder, false);
+				}),
 			);
 		}
 	};
@@ -283,5 +297,5 @@ export const pull = async (
 
 	await t.endSync(syncNotice);
 
-	new Notice("Files have been synced from Google Drive!");
+	new Notice('Files have been synced from Google Drive!');
 };
