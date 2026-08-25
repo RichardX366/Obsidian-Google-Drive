@@ -119,11 +119,15 @@ export const refreshAccessToken = async (
 ) => {
 	try {
 		const response = await requestUrl({
-			url: t.settings.accessTokenUrl,
+			url:
+				t.settings.accessTokenUrl ||
+				'https://ogd.richardxiong.com/api/access',
 			method: 'POST',
 			contentType: 'application/json',
 			body: JSON.stringify({
 				refresh_token: refreshToken || t.settings.refreshToken,
+				clientId: t.settings.clientId,
+				clientSecret: t.settings.clientSecret,
 			}),
 			throw: false,
 		});

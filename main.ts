@@ -17,6 +17,8 @@ import {
 
 interface PluginSettings {
 	refreshToken: string;
+	clientId: string;
+	clientSecret: string;
 	accessTokenUrl: string;
 	autoPush: boolean;
 	operations: Record<string, 'create' | 'delete' | 'modify'>;
@@ -28,7 +30,9 @@ interface PluginSettings {
 
 const DEFAULT_SETTINGS: PluginSettings = {
 	refreshToken: '',
-	accessTokenUrl: 'https://ogd.richardxiong.com/api/access',
+	clientId: '',
+	clientSecret: '',
+	accessTokenUrl: '',
 	autoPush: false,
 	operations: {},
 	driveIdToPath: {},
@@ -430,12 +434,13 @@ class SettingsTab extends PluginSettingTab {
 			},
 			{
 				name: 'Access token endpoint',
-				desc: 'Service used to exchange the refresh token for a Google access token. The refresh token is sent to this URL. This is just so you can self-host the access token refresher.',
+				desc: 'Service used to exchange the refresh token for a Google access token. The refresh token is sent to this URL. This is just so you can self-host the access token refresher. The code to host the website is available at https://github.com/RichardX366/Obsidian-Google-Drive-website. Defaults to my hosted service at https://ogd.richardxiong.com/api/access.',
 				control: {
 					type: 'text',
 					key: 'accessTokenUrl',
 					placeholder: 'https://ogd.richardxiong.com/api/access',
 					validate: (value: string) => {
+						if (!value) return;
 						try {
 							if (new URL(value).protocol !== 'https:') {
 								return 'Access token endpoint must use HTTPS.';
@@ -445,6 +450,24 @@ class SettingsTab extends PluginSettingTab {
 						}
 						return;
 					},
+				},
+			},
+			{
+				name: 'Client ID',
+				desc: 'Optional OAuth client ID sent to the access token endpoint.',
+				control: {
+					type: 'text',
+					key: 'clientId',
+					placeholder: 'Client ID',
+				},
+			},
+			{
+				name: 'Client secret',
+				desc: 'Optional OAuth client secret sent to the access token endpoint.',
+				control: {
+					type: 'text',
+					key: 'clientSecret',
+					placeholder: 'Client secret',
 				},
 			},
 		];

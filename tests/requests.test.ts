@@ -28,6 +28,8 @@ const createPlugin = () => ({
 	accessToken: { token: '', expiresAt: 0 },
 	settings: {
 		refreshToken: 'saved-token',
+		clientId: 'custom-client-id',
+		clientSecret: 'custom-client-secret',
 		accessTokenUrl: 'https://tokens.example.com/access',
 	},
 	saveSettings: vi.fn(async () => undefined),
@@ -91,6 +93,11 @@ describe('refreshAccessToken', () => {
 		expect(mocks.requestUrl).toHaveBeenCalledWith(
 			expect.objectContaining({
 				url: 'https://tokens.example.com/access',
+				body: JSON.stringify({
+					refresh_token: 'saved-token',
+					clientId: 'custom-client-id',
+					clientSecret: 'custom-client-secret',
+				}),
 			}),
 		);
 	});
