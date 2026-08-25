@@ -6,6 +6,8 @@ import {
 	folderMimeType,
 	foldersToBatches,
 	getSyncMessage,
+	splitPath,
+	unSplitPath,
 } from './drive';
 import { pull } from './pull';
 
@@ -174,7 +176,7 @@ class ConfirmUndoModal extends Modal {
 	async handleDelete(paths: string[]) {
 		const files = await this.t.drive.searchFiles({
 			include: ['id', 'mimeType', 'properties', 'modifiedTime'],
-			matches: paths.map((path) => ({ properties: { path } })),
+			matches: paths.map((path) => ({ properties: splitPath(path) })),
 		});
 		if (!files) {
 			new Notice('An error occurred fetching Google Drive files.');
@@ -182,11 +184,11 @@ class ConfirmUndoModal extends Modal {
 		}
 
 		const pathToFile = Object.fromEntries(
-			files.map((file) => [file.properties.path as string, file]),
+			files.map((file) => [unSplitPath(file.properties), file]),
 		);
 
 		const deletedFolders = paths.filter(
-			(path) => pathToFile[path]?.properties.path === folderMimeType,
+			(path) => pathToFile[path]?.mimeType === folderMimeType,
 		);
 
 		if (deletedFolders.length) {
@@ -200,7 +202,7 @@ class ConfirmUndoModal extends Modal {
 		}
 
 		const deletedFiles = paths.filter(
-			(path) => pathToFile[path]?.properties.path !== folderMimeType,
+			(path) => pathToFile[path]?.mimeType !== folderMimeType,
 		);
 
 		await batchAsync(
@@ -289,10 +291,11 @@ export const push = async (t: ObsidianGoogleDrive) => {
 
 	await Promise.all(
 		configOnDrive.map(async ({ properties }) => {
-			if (!(await adapter.exists(properties.path as string))) {
-				deletes.push([properties.path as string, 'delete']);
-			}
-		}),
+				const path = unSplitPath(properties);
+				if (!(await adapter.exists(path))) {
+					deletes.push([path, 'delete']);
+				}
+			}),
 	);
 
 	if (deletes.length) {
@@ -327,7 +330,7 @@ export const push = async (t: ObsidianGoogleDrive) => {
 							parent: folder.parent
 								? pathsToIds[folder.parent.path]
 								: undefined,
-							properties: { path: folder.path },
+							properties: splitPath(folder.path),
 							modifiedTime: new Date().toISOString(),
 						});
 						if (!id) {
@@ -358,7 +361,7 @@ export const push = async (t: ObsidianGoogleDrive) => {
 					note.name,
 					note.parent ? pathsToIds[note.parent.path] : undefined,
 					{
-						properties: { path: note.path },
+						properties: splitPath(note.path),
 						modifiedTime: new Date().toISOString(),
 					},
 				);
@@ -440,7 +443,7 @@ export const push = async (t: ObsidianGoogleDrive) => {
 						parent: pathsToIds[
 							folder.split('/').slice(0, -1).join('/')
 						],
-						properties: { path: folder, config: 'true' },
+						properties: { ...splitPath(folder), config: 'true' },
 						modifiedTime: new Date().toISOString(),
 					});
 					if (!id) {
@@ -473,7 +476,7 @@ export const push = async (t: ObsidianGoogleDrive) => {
 				fileNameFromPath(path),
 				pathsToIds[path.split('/').slice(0, -1).join('/')],
 				{
-					properties: { path, config: 'true' },
+					properties: { ...splitPath(path), config: 'true' },
 					modifiedTime: new Date().toISOString(),
 				},
 			);

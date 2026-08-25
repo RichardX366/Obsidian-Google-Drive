@@ -6,6 +6,7 @@ import {
 	folderMimeType,
 	foldersToBatches,
 	getSyncMessage,
+	unSplitPath,
 } from './drive';
 import { refreshAccessToken } from './ky';
 
@@ -78,7 +79,7 @@ export const pull = async (
 
 	const updateMap = () => {
 		recentlyModified.forEach(({ id, properties }) => {
-			pathToId[properties.path as string] = id;
+			pathToId[unSplitPath(properties)] = id;
 		});
 
 		t.settings.driveIdToPath = Object.fromEntries(
@@ -135,7 +136,7 @@ export const pull = async (
 
 		if (newFolders.length) {
 			const batches = foldersToBatches(
-				newFolders.map(({ properties }) => properties.path as string),
+				newFolders.map(({ properties }) => unSplitPath(properties)),
 			);
 
 			for (const batch of batches) {
@@ -162,11 +163,10 @@ export const pull = async (
 
 		await batchAsync(
 			newNotes.map((file: FileMetadata) => async () => {
+				const path = unSplitPath(file.properties);
 				const localFile =
-					vault.getFileByPath(file.properties.path as string) ||
-					(await adapter.exists(file.properties.path as string));
-				const operation =
-					t.settings.operations[file.properties.path as string];
+					vault.getFileByPath(path) || (await adapter.exists(path));
+				const operation = t.settings.operations[path];
 
 				completed++;
 
@@ -175,8 +175,7 @@ export const pull = async (
 				}
 
 				if (localFile && operation === 'create') {
-					t.settings.operations[file.properties.path as string] =
-						'modify';
+					t.settings.operations[path] = 'modify';
 					return;
 				}
 
@@ -191,7 +190,7 @@ export const pull = async (
 				}
 
 				return t.upsertFile(
-					file.properties.path as string,
+					path,
 					content,
 					file.modifiedTime,
 				);

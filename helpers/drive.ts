@@ -48,10 +48,15 @@ const WHITELISTED_PLUGIN_FILES = [
 	'data.json',
 ];
 
+const escapeQueryValue = (value: string) =>
+	value.replaceAll('\\', '\\\\').replaceAll("'", "\\'");
+
 const stringSearchToQuery = (search: StringSearch) => {
-	if (typeof search === 'string') return `='${search}'`;
-	if ('contains' in search) return ` contains '${search.contains}'`;
-	if ('not' in search) return `!='${search.not}'`;
+	if (typeof search === 'string') return `='${escapeQueryValue(search)}'`;
+	if ('contains' in search) {
+		return ` contains '${escapeQueryValue(search.contains)}'`;
+	}
+	if ('not' in search) return `!='${escapeQueryValue(search.not)}'`;
 	return;
 };
 
@@ -59,14 +64,16 @@ const queryHandlers = {
 	name: (name: StringSearch) => 'name' + stringSearchToQuery(name),
 	mimeType: (mimeType: StringSearch) =>
 		'mimeType' + stringSearchToQuery(mimeType),
-	parent: (parent: string) => `'${parent}' in parents`,
+	parent: (parent: string) => `'${escapeQueryValue(parent)}' in parents`,
 	starred: (starred: boolean) => `starred=${starred}`,
-	query: (query: string) => `fullText contains '${query}'`,
+	query: (query: string) => `fullText contains '${escapeQueryValue(query)}'`,
 	properties: (properties: Record<string, string>) =>
-		Object.entries(properties).map(
-			([key, value]) =>
-				`properties has { key='${key}' and value='${value}' }`,
-		),
+		Object.entries(properties)
+			.map(
+				([key, value]) =>
+					`properties has { key='${escapeQueryValue(key)}' and value='${escapeQueryValue(value)}' }`,
+			)
+			.join(' and '),
 	modifiedTime: (modifiedTime: DateComparison) => {
 		if ('eq' in modifiedTime) return `modifiedTime='${modifiedTime.eq}'`;
 		if ('gt' in modifiedTime) return `modifiedTime>'${modifiedTime.gt}'`;
@@ -77,6 +84,30 @@ const queryHandlers = {
 
 export const fileListToMap = (files: { id: string; name: string }[]) =>
 	Object.fromEntries(files.map(({ id, name }) => [name, id]));
+
+export const splitPath = (path: string) => {
+	const output: { [key: string]: string } = {
+		path: path.substring(0, 100),
+	};
+	path = path.substring(100);
+	let i = 2;
+	while (path.length) {
+		output[`path${i}`] = path.substring(0, 100);
+		path = path.substring(100);
+		i++;
+	}
+	return output;
+};
+
+export const unSplitPath = (properties: Record<string, string>) => {
+	let path = properties.path || '';
+	let i = 2;
+	while (properties[`path${i}`]) {
+		path += properties[`path${i}`];
+		i++;
+	}
+	return path;
+};
 
 export const getDriveClient = (t: ObsidianGoogleDrive) => {
 	const drive = getDriveKy(t);
@@ -103,7 +134,7 @@ export const getDriveClient = (t: ObsidianGoogleDrive) => {
 				})
 				.join(
 					' or ',
-				)}) and trashed=false and properties has { key='vault' and value='${t.app.vault.getName()}' }`,
+				)}) and trashed=false and properties has { key='vault' and value='${escapeQueryValue(t.app.vault.getName())}' }`,
 		);
 
 	const paginateFiles = async ({
@@ -131,7 +162,11 @@ export const getDriveClient = (t: ObsidianGoogleDrive) => {
 				`drive/v3/files?fields=nextPageToken,files(${include.join(
 					',',
 				)})&pageSize=${pageSize}&q=${
-					matches ? getQuery(matches) : 'trashed=false'
+					matches
+						? getQuery(matches)
+						: "trashed=false and properties has { key='vault' and value='" +
+							escapeQueryValue(t.app.vault.getName()) +
+							"'}"
 				}${
 					matches?.find(({ query }) => query)
 						? ''
@@ -340,7 +375,7 @@ export const getDriveClient = (t: ObsidianGoogleDrive) => {
 
 	const idFromPath = async (path: string) => {
 		const files = await searchFiles({
-			matches: [{ properties: { path } }],
+			matches: [{ properties: splitPath(path) }],
 		});
 		if (!files?.length) return;
 		return files[0]?.id as string;
@@ -348,12 +383,12 @@ export const getDriveClient = (t: ObsidianGoogleDrive) => {
 
 	const idsFromPaths = async (paths: string[]) => {
 		const files = await searchFiles({
-			matches: paths.map((path) => ({ properties: { path } })),
+			matches: paths.map((path) => ({ properties: splitPath(path) })),
 		});
 		if (!files) return;
 		return files.map((file) => ({
 			id: file.id,
-			path: file.properties.path,
+			path: unSplitPath(file.properties),
 		}));
 	};
 

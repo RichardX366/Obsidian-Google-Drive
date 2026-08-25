@@ -4,6 +4,8 @@ import {
 	folderMimeType,
 	foldersToBatches,
 	getSyncMessage,
+	splitPath,
+	unSplitPath,
 } from './drive';
 import { Notice, TAbstractFile, TFile, Modal, Setting } from 'obsidian';
 import { pull } from './pull';
@@ -107,7 +109,9 @@ export const reset = async (t: ObsidianGoogleDrive) => {
 	if (deletes.length) {
 		const files = await t.drive.searchFiles({
 			include: ['id', 'mimeType', 'properties', 'modifiedTime'],
-			matches: deletes.map(([path]) => ({ properties: { path } })),
+			matches: deletes.map(([path]) => ({
+				properties: splitPath(path),
+			})),
 		});
 		if (!files) {
 			new Notice('An error occurred fetching Google Drive files.');
@@ -115,7 +119,7 @@ export const reset = async (t: ObsidianGoogleDrive) => {
 		}
 
 		const pathToFile = Object.fromEntries(
-			files.map((file) => [file.properties.path as string, file]),
+			files.map((file) => [unSplitPath(file.properties), file]),
 		);
 
 		const deletedFolders = deletes.filter(

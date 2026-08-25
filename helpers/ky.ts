@@ -1,6 +1,5 @@
 import ObsidianGoogleDrive from '../main';
 import { Notice, requestUrl, RequestUrlResponse } from 'obsidian';
-import { checkConnection } from './drive';
 
 interface RequestOptions {
 	body?: BodyInit;
@@ -121,7 +120,31 @@ export const refreshAccessToken = async (
 			body: JSON.stringify({
 				refresh_token: refreshToken || t.settings.refreshToken,
 			}),
+			throw: false,
 		});
+
+		if ([400, 401, 403].includes(response.status)) {
+			t.settings.refreshToken = '';
+			t.accessToken = {
+				token: '',
+				expiresAt: 0,
+			};
+
+			new Notice(
+				'Your refresh token was rejected. Please add a new refresh token and try again.',
+				0,
+			);
+			await t.saveSettings();
+			return;
+		}
+
+		if (response.status < 200 || response.status >= 300) {
+			new Notice(
+				`Could not refresh your access token (HTTP ${response.status}). Your refresh token was kept; please try again.`,
+			);
+			return;
+		}
+
 		const { expires_in, access_token } = response.json as {
 			expires_in: number;
 			access_token: string;
@@ -133,24 +156,9 @@ export const refreshAccessToken = async (
 		};
 		return t.accessToken;
 	} catch {
-		if (!(await checkConnection())) {
-			new Notice(
-				"Something is wrong with your internet connection, so we could not fetch a new access token! Once you're back online, please restart Obsidian.",
-				0,
-			);
-			return;
-		}
-		t.settings.refreshToken = '';
-		t.accessToken = {
-			token: '',
-			expiresAt: 0,
-		};
-
 		new Notice(
-			'Something is wrong with your refresh token, please restart Obsidian and then reset it.',
-			0,
+			'Could not refresh your access token. Your refresh token was kept; check your connection and try again.',
 		);
-		await t.saveSettings();
 	}
 	return;
 };
