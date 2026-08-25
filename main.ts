@@ -187,7 +187,7 @@ export default class ObsidianGoogleDrive extends Plugin {
 				return;
 			}
 			void push(this, true);
-		}, 30_000);
+		}, 60_000);
 	}
 
 	resumeAutoPushIfNeeded() {

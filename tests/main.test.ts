@@ -92,7 +92,7 @@ describe('ObsidianGoogleDrive operation tracking', () => {
 		expect(setTimeout).toHaveBeenCalledTimes(2);
 		expect(setTimeout).toHaveBeenLastCalledWith(
 			expect.any(Function),
-			30_000,
+			60_000,
 		);
 		expect(clearTimeout).toHaveBeenCalledWith(1);
 		plugin.clearAutoPushTimer();
