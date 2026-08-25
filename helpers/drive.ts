@@ -534,7 +534,7 @@ export const getDriveClient = (t: ObsidianGoogleDrive) => {
 export const checkConnection = async () => {
 	try {
 		const result = await requestUrl({
-			url: 'https://example.com',
+			url: 'https://www.google.com/generate_204',
 			throw: false,
 		});
 		return result.status >= 200 && result.status < 300;
