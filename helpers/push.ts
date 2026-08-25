@@ -11,7 +11,7 @@ import {
 } from './drive';
 import { pull } from './pull';
 
-class ConfirmPushModal extends Modal {
+export class ConfirmPushModal extends Modal {
 	proceed: (res: boolean) => void;
 
 	constructor(
@@ -103,7 +103,7 @@ class ConfirmPushModal extends Modal {
 	}
 }
 
-class ConfirmUndoModal extends Modal {
+export class ConfirmUndoModal extends Modal {
 	proceed: (res: boolean) => void;
 	t: ObsidianGoogleDrive;
 	filePathToId: Record<string, string>;
