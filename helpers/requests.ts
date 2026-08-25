@@ -133,17 +133,10 @@ export const refreshAccessToken = async (
 		});
 
 		if ([400, 401, 403].includes(response.status)) {
-			t.settings.refreshToken = '';
-			t.accessToken = {
-				token: '',
-				expiresAt: 0,
-			};
-
 			new Notice(
 				'Your refresh token was rejected. Please add a new refresh token and try again.',
 				0,
 			);
-			await t.saveSettings();
 			return;
 		}
 
