@@ -84,6 +84,9 @@ export const getDriveAgent = (t: ObsidianGoogleDrive) => {
 
 			if (result.status < 200 || result.status >= 300) {
 				new Notice(`Error: ${result.text}`);
+				throw new Error(
+					`Request failed with status ${result.status}: ${result.text}`,
+				);
 			}
 			return toDriveResponse(result);
 		})();
