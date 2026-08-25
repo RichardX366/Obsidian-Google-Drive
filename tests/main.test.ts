@@ -1,4 +1,6 @@
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+
+vi.stubGlobal('window', globalThis);
 
 vi.mock('obsidian', () => {
 	class TAbstractFile {
@@ -32,6 +34,7 @@ const createPlugin = () =>
 	Object.assign(Object.create(ObsidianGoogleDrive.prototype), {
 		settings: {
 			refreshToken: 'refresh',
+			autoPush: false,
 			operations: {},
 			driveIdToPath: {},
 			rootFolderId: '',
@@ -60,6 +63,10 @@ const createPlugin = () =>
 	}) as ObsidianGoogleDrive;
 
 describe('ObsidianGoogleDrive operation tracking', () => {
+	afterEach(() => {
+		vi.useRealTimers();
+	});
+
 	it('turns recreation of a deleted file into a modification', () => {
 		const plugin = createPlugin();
 		plugin.settings.operations['note.md'] = 'delete';
@@ -69,6 +76,36 @@ describe('ObsidianGoogleDrive operation tracking', () => {
 		plugin.handleCreate(file);
 
 		expect(plugin.settings.operations['note.md']).toBe('modify');
+	});
+
+	it('debounces automatic push scheduling after local changes', () => {
+		vi.useFakeTimers();
+		const plugin = createPlugin();
+		plugin.syncing = false;
+		plugin.settings.autoPush = true;
+		const file = new TFile();
+		Object.assign(file, { path: 'note.md' });
+
+		plugin.handleModify(file);
+		vi.advanceTimersByTime(30_000);
+		plugin.handleModify(file);
+
+		expect(vi.getTimerCount()).toBe(1);
+		plugin.clearAutoPushTimer();
+		expect(vi.getTimerCount()).toBe(0);
+	});
+
+	it('does not schedule automatic pushes while syncing or disabled', () => {
+		vi.useFakeTimers();
+		const plugin = createPlugin();
+		plugin.settings.operations['note.md'] = 'modify';
+
+		plugin.scheduleAutoPush();
+		expect(vi.getTimerCount()).toBe(0);
+
+		plugin.settings.autoPush = true;
+		plugin.scheduleAutoPush();
+		expect(vi.getTimerCount()).toBe(0);
 	});
 
 	it('cancels a pending create when the file is deleted', () => {

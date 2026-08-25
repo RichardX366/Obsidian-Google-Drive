@@ -33,6 +33,7 @@ export default defineConfig(
 		files: ['tests/**/*.ts'],
 		rules: {
 			'@typescript-eslint/unbound-method': 'off',
+			'obsidianmd/no-global-this': 'off',
 		},
 	},
 );

@@ -248,7 +248,10 @@ export class ConfirmUndoModal extends Modal {
 	}
 }
 
-export const push = async (t: ObsidianGoogleDrive) => {
+export const push = async (
+	t: ObsidianGoogleDrive,
+	skipConfirmation = false,
+) => {
 	if (t.syncing) return;
 	const initialOperations = Object.entries(t.settings.operations).sort(
 		([a], [b]) => (a < b ? -1 : a > b ? 1 : 0),
@@ -257,9 +260,11 @@ export const push = async (t: ObsidianGoogleDrive) => {
 	const { vault } = t.app;
 	const adapter = vault.adapter;
 
-	const proceed = await new Promise<boolean>((resolve) => {
-		new ConfirmPushModal(t, initialOperations, resolve).open();
-	});
+	const proceed =
+		skipConfirmation ||
+		(await new Promise<boolean>((resolve) => {
+			new ConfirmPushModal(t, initialOperations, resolve).open();
+		}));
 
 	if (!proceed) return;
 

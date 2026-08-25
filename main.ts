@@ -17,6 +17,7 @@ import {
 
 interface PluginSettings {
 	refreshToken: string;
+	autoPush: boolean;
 	operations: Record<string, 'create' | 'delete' | 'modify'>;
 	driveIdToPath: Record<string, string>;
 	rootFolderId: string;
@@ -26,6 +27,7 @@ interface PluginSettings {
 
 const DEFAULT_SETTINGS: PluginSettings = {
 	refreshToken: '',
+	autoPush: false,
 	operations: {},
 	driveIdToPath: {},
 	rootFolderId: '',
@@ -42,6 +44,7 @@ export default class ObsidianGoogleDrive extends Plugin {
 	drive = getDriveClient(this);
 	ribbonIcon!: HTMLElement;
 	syncing!: boolean;
+	autoPushTimer?: number;
 
 	async onload() {
 		const { vault } = this.app;
@@ -139,6 +142,7 @@ export default class ObsidianGoogleDrive extends Plugin {
 	}
 
 	onunload() {
+		this.clearAutoPushTimer();
 		void this.saveSettings();
 		return;
 	}
@@ -157,6 +161,35 @@ export default class ObsidianGoogleDrive extends Plugin {
 
 	debouncedSaveSettings = debounce(this.saveSettings.bind(this), 500, true);
 
+	clearAutoPushTimer() {
+		if (this.autoPushTimer === undefined) return;
+		window.clearTimeout(this.autoPushTimer);
+		this.autoPushTimer = undefined;
+	}
+
+	scheduleAutoPush() {
+		this.clearAutoPushTimer();
+		if (!this.settings.autoPush || this.syncing) return;
+
+		this.autoPushTimer = window.setTimeout(() => {
+			this.autoPushTimer = undefined;
+			if (
+				this.syncing ||
+				!this.settings.autoPush ||
+				!Object.keys(this.settings.operations).length
+			) {
+				return;
+			}
+			void push(this, true);
+		}, 60_000);
+	}
+
+	resumeAutoPushIfNeeded() {
+		if (Object.keys(this.settings.operations).length) {
+			this.scheduleAutoPush();
+		}
+	}
+
 	handleCreate(file: TAbstractFile) {
 		if (this.settings.operations[file.path] === 'delete') {
 			if (file instanceof TFile) {
@@ -168,6 +201,7 @@ export default class ObsidianGoogleDrive extends Plugin {
 			this.settings.operations[file.path] = 'create';
 		}
 		this.debouncedSaveSettings();
+		this.scheduleAutoPush();
 	}
 
 	handleDelete(file: TAbstractFile) {
@@ -177,15 +211,18 @@ export default class ObsidianGoogleDrive extends Plugin {
 			this.settings.operations[file.path] = 'delete';
 		}
 		this.debouncedSaveSettings();
+		this.scheduleAutoPush();
 	}
 
 	handleModify(file: TAbstractFile) {
 		const operation = this.settings.operations[file.path];
 		if (operation === 'create' || operation === 'modify') {
+			this.scheduleAutoPush();
 			return;
 		}
 		this.settings.operations[file.path] = 'modify';
 		this.debouncedSaveSettings();
+		this.scheduleAutoPush();
 	}
 
 	handleRename(file: TAbstractFile, oldPath: string) {
@@ -275,6 +312,7 @@ export default class ObsidianGoogleDrive extends Plugin {
 			);
 			throw new Error('No internet connection');
 		}
+		this.clearAutoPushTimer();
 		this.ribbonIcon.addClass('spin');
 		this.syncing = true;
 		return new Notice('Syncing (0%)', 0);
@@ -310,6 +348,7 @@ export default class ObsidianGoogleDrive extends Plugin {
 		this.ribbonIcon.removeClass('spin');
 		this.syncing = false;
 		syncNotice?.hide();
+		this.resumeAutoPushIfNeeded();
 		return true;
 	}
 
@@ -317,6 +356,7 @@ export default class ObsidianGoogleDrive extends Plugin {
 		this.ribbonIcon.removeClass('spin');
 		this.syncing = false;
 		syncNotice?.hide();
+		this.resumeAutoPushIfNeeded();
 	}
 }
 
@@ -352,6 +392,10 @@ class SettingsTab extends PluginSettingTab {
 							return 'Refresh token cannot be empty';
 						}
 
+						if (value === this.plugin.settings.refreshToken) {
+							return;
+						}
+
 						if (!(await refreshAccessToken(this.plugin, value))) {
 							return 'Failed to refresh access token.';
 						}
@@ -373,6 +417,23 @@ class SettingsTab extends PluginSettingTab {
 					},
 				},
 			},
+			{
+				name: 'Automatically push changes',
+				desc: 'Push one minute after the most recent local file change.',
+				control: {
+					type: 'toggle',
+					key: 'autoPush',
+					defaultValue: false,
+				},
+			},
 		];
+	}
+
+	async setControlValue(key: string, value: unknown) {
+		await super.setControlValue(key, value);
+		if (key === 'autoPush') {
+			if (value) this.plugin.resumeAutoPushIfNeeded();
+			else this.plugin.clearAutoPushTimer();
+		}
 	}
 }
