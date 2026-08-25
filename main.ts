@@ -204,6 +204,12 @@ export default class ObsidianGoogleDrive extends Plugin {
 				delete this.settings.operations[file.path];
 			}
 		} else {
+			if (file.path.includes('"')) {
+				new Notice(
+					`File path ${file.path} contains double quotes and will not be synced.`,
+				);
+				return;
+			}
 			this.settings.operations[file.path] = 'create';
 		}
 		this.debouncedSaveSettings();
@@ -213,7 +219,7 @@ export default class ObsidianGoogleDrive extends Plugin {
 	handleDelete(file: TAbstractFile) {
 		if (this.settings.operations[file.path] === 'create') {
 			delete this.settings.operations[file.path];
-		} else {
+		} else if (!file.path.includes('"')) {
 			this.settings.operations[file.path] = 'delete';
 		}
 		this.debouncedSaveSettings();

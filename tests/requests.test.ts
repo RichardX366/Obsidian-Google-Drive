@@ -42,16 +42,20 @@ describe('refreshAccessToken', () => {
 	});
 
 	it.each([400, 401, 403])(
-		'clears a rejected token on HTTP %s',
+		'keeps credentials when a token is rejected with HTTP %s',
 		async (status) => {
 			mocks.requestUrl.mockResolvedValue(response(status));
 			const plugin = createPlugin();
+			plugin.accessToken = { token: 'cached-access', expiresAt: 1234 };
 
 			await refreshAccessToken(plugin as never);
 
-			expect(plugin.settings.refreshToken).toBe('');
-			expect(plugin.accessToken).toEqual({ token: '', expiresAt: 0 });
-			expect(plugin.saveSettings).toHaveBeenCalledOnce();
+			expect(plugin.settings.refreshToken).toBe('saved-token');
+			expect(plugin.accessToken).toEqual({
+				token: 'cached-access',
+				expiresAt: 1234,
+			});
+			expect(plugin.saveSettings).not.toHaveBeenCalled();
 		},
 	);
 
@@ -68,6 +72,17 @@ describe('refreshAccessToken', () => {
 			expect(mocks.notices.at(-1)).toContain('please try again');
 		},
 	);
+
+	it('does not clear the saved token when a replacement token is rejected', async () => {
+		mocks.requestUrl.mockResolvedValue(response(401));
+		const plugin = createPlugin();
+
+		await refreshAccessToken(plugin as never, 'replacement-token');
+
+		expect(plugin.settings.refreshToken).toBe('saved-token');
+		expect(plugin.accessToken).toEqual({ token: '', expiresAt: 0 });
+		expect(plugin.saveSettings).not.toHaveBeenCalled();
+	});
 
 	it('keeps the token after a network failure', async () => {
 		mocks.requestUrl.mockRejectedValue(new Error('offline'));
