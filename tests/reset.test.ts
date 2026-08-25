@@ -103,9 +103,11 @@ describe('reset', () => {
 			syncing: false,
 			app: {
 				vault: {
+					configDir: 'config',
 					adapter: {
 						exists: vi.fn(async () => false),
 					},
+					getAllLoadedFiles: vi.fn(() => [...files.values()]),
 					getAbstractFileByPath: vi.fn((path: string) => files.get(path)),
 					getFileByPath: vi.fn((path: string) => files.get(path)),
 				},

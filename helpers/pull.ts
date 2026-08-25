@@ -10,10 +10,7 @@ import {
 } from './drive';
 import { refreshAccessToken } from './requests';
 
-export const pull = async (
-	t: ObsidianGoogleDrive,
-	silenceNotices?: boolean,
-) => {
+export const pull = async (t: ObsidianGoogleDrive, silenceNotices = false) => {
 	let syncNotice = undefined;
 
 	if (!silenceNotices) {
@@ -41,6 +38,57 @@ export const pull = async (
 			t.abortSync(syncNotice);
 			return false;
 		}
+
+		const cloudSet = new Set(
+			Object.values(t.settings.driveIdToPath).filter(
+				(path) =>
+					!path.startsWith(vault.configDir + '/') &&
+					path !== vault.configDir,
+			),
+		);
+
+		const localSet = new Set(
+			vault
+				.getAllLoadedFiles()
+				.map((file) => file.path)
+				.filter((path) => path !== '/'),
+		);
+
+		cloudSet.forEach((path) => {
+			if (!localSet.has(path)) {
+				t.settings.operations[path] = 'delete';
+			}
+		});
+
+		for (const path in t.settings.operations) {
+			if (
+				path === vault.configDir ||
+				path.startsWith(vault.configDir + '/')
+			) {
+				continue;
+			}
+
+			const operation = t.settings.operations[path];
+			const existsLocally = localSet.has(path);
+
+			if (operation === 'delete' && existsLocally) {
+				t.settings.operations[path] = 'modify';
+			} else if (operation === 'create' && !existsLocally) {
+				delete t.settings.operations[path];
+			} else if (operation === 'modify' && !existsLocally) {
+				t.settings.operations[path] = 'delete';
+			}
+		}
+
+		recentlyModified.forEach(({ properties }) =>
+			cloudSet.add(unSplitPath(properties)),
+		);
+
+		localSet.forEach((path) => {
+			if (!cloudSet.has(path)) {
+				t.settings.operations[path] = 'create';
+			}
+		});
 
 		const changes = await t.drive.getChanges(t.settings.changesToken);
 		if (!changes) {

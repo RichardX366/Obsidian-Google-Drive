@@ -129,6 +129,7 @@ describe('push', () => {
 				vault: {
 					configDir: '.config',
 					adapter: { exists: vi.fn(async () => true) },
+					getAllLoadedFiles: vi.fn(() => [...files.values()]),
 					getAbstractFileByPath: vi.fn((path: string) => files.get(path)),
 					getFileByPath: vi.fn((path: string) => files.get(path)),
 					readBinary: vi.fn(async () => new ArrayBuffer(1)),

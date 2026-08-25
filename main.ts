@@ -52,8 +52,8 @@ export default class ObsidianGoogleDrive extends Plugin {
 
 		if (!this.settings.refreshToken) {
 			new Notice(
-				"Please add your refresh token to Google Drive sync through our website or our readme/this plugin's settings. If you haven't already, please read through this plugin's readme or website carefully for instructions on how to use this plugin. If you don't know what you're doing, your data could get deleted.",
-				0,
+				"Please add your refresh token to Google Drive sync through our website or our readme/this plugin's settings. If you haven't already, please read through this plugin's readme or website for instructions on how to use this plugin. Be careful of your first sync, and make sure to back up your data before your first sync.",
+				10000,
 			);
 			return;
 		}
@@ -329,8 +329,6 @@ class SettingsTab extends PluginSettingTab {
 	}
 
 	getSettingDefinitions(): SettingDefinitionItem[] {
-		const { vault } = this.app;
-
 		return [
 			{
 				name: 'Get refresh token',
@@ -354,14 +352,6 @@ class SettingsTab extends PluginSettingTab {
 							return 'Refresh token cannot be empty';
 						}
 
-						if (
-							vault
-								.getAllLoadedFiles()
-								.filter(({ path }) => path !== '/').length > 0
-						) {
-							return 'Your current vault is not empty! If you want our plugin to handle the initial sync, you have to clear out the current vault. Check the readme or website for more details.';
-						}
-
 						if (!(await refreshAccessToken(this.plugin, value))) {
 							return 'Failed to refresh access token.';
 						}
@@ -374,9 +364,10 @@ class SettingsTab extends PluginSettingTab {
 						this.plugin.settings.changesToken = changesToken;
 
 						await this.plugin.saveSettings();
-						new Notice(
-							'Refresh token saved! Reload Obsidian to activate sync.',
-							0,
+						new Notice('Refresh token saved! Beginning to sync.');
+						window.setTimeout(
+							() => void this.plugin.onload(),
+							1000,
 						);
 						return;
 					},

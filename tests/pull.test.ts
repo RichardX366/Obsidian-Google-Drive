@@ -49,6 +49,8 @@ const createPlugin = () => {
 	};
 	const vault = {
 		adapter,
+		configDir: 'config',
+		getAllLoadedFiles: vi.fn((): { path: string }[] => []),
 		getAbstractFileByPath: vi.fn(
 			(_path: string): TFile | null => null,
 		),
@@ -106,6 +108,52 @@ describe('pull', () => {
 		expect(plugin.abortSync).toHaveBeenCalledOnce();
 	});
 
+	it('reconciles creates, deletes, and renames made while Obsidian was closed', async () => {
+		const plugin = createPlugin();
+		plugin.settings.driveIdToPath = {
+			'old-id': 'old.md',
+			'stable-id': 'stable.md',
+		};
+		plugin.app.vault.getAllLoadedFiles.mockReturnValue([
+			{ path: '/' },
+			{ path: 'renamed.md' },
+			{ path: 'stable.md' },
+		]);
+
+		await expect(pull(plugin as never, true)).resolves.toBe(true);
+
+		expect(plugin.settings.operations).toEqual({
+			'old.md': 'delete',
+			'renamed.md': 'create',
+		});
+	});
+
+	it('cleans stale operations while preserving config operations', async () => {
+		const plugin = createPlugin();
+		plugin.settings.driveIdToPath = {
+			'stable-id': 'stable.md',
+			'missing-id': 'missing.md',
+		};
+		plugin.settings.operations = {
+			'ghost.md': 'create',
+			'stable.md': 'delete',
+			'missing.md': 'modify',
+			'config/plugins/example/data.json': 'modify',
+		};
+		plugin.app.vault.getAllLoadedFiles.mockReturnValue([
+			{ path: '/' },
+			{ path: 'stable.md' },
+		]);
+
+		await expect(pull(plugin as never, true)).resolves.toBe(true);
+
+		expect(plugin.settings.operations).toEqual({
+			'stable.md': 'modify',
+			'missing.md': 'delete',
+			'config/plugins/example/data.json': 'modify',
+		});
+	});
+
 	it('uses the preserved ID mapping to trash a remotely deleted config file', async () => {
 		const plugin = createPlugin();
 		const path = 'config/plugins/example/data.json';
@@ -133,6 +181,9 @@ describe('pull', () => {
 		plugin.app.vault.getAbstractFileByPath.mockImplementation(
 			(path: string) => (path === deletedFile.path ? deletedFile : null),
 		);
+		plugin.app.vault.getAllLoadedFiles.mockReturnValue([
+			{ path: deletedFile.path },
+		]);
 		plugin.app.vault.adapter.stat.mockImplementation(async (path: string) =>
 			path === configPath ? { type: 'file' as const } : undefined,
 		);
