@@ -117,6 +117,7 @@ describe('push', () => {
 				.mockResolvedValueOnce([]),
 			getChanges: vi.fn(async () => []),
 			batchDelete: vi.fn(async () => true),
+			getRootFolderId: vi.fn(async () => 'root-id'),
 			createFolder: vi.fn(async () => 'folder-id'),
 			uploadFile: vi.fn(async () => 'created-id'),
 			updateFile: vi.fn(async () => 'updated-id'),
@@ -161,6 +162,7 @@ describe('push', () => {
 		await push(plugin as never);
 
 		expect(drive.batchDelete).toHaveBeenCalledWith(['deleted-id']);
+		expect(drive.getRootFolderId).toHaveBeenCalledWith(true);
 		expect(drive.createFolder).toHaveBeenCalled();
 		expect(drive.uploadFile).toHaveBeenCalled();
 		expect(drive.updateFile).toHaveBeenCalledWith(

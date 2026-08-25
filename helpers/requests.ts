@@ -9,6 +9,7 @@ interface RequestOptions {
 
 interface DriveResponse {
 	readonly ok: boolean;
+	readonly status: number;
 	arrayBuffer(): Promise<ArrayBuffer>;
 	json<T>(): Promise<T>;
 	text(): Promise<string>;
@@ -48,6 +49,7 @@ const serializeBody = async (
 
 const toDriveResponse = (response: RequestUrlResponse): DriveResponse => ({
 	ok: response.status >= 200 && response.status < 300,
+	status: response.status,
 	arrayBuffer: async () => response.arrayBuffer,
 	json: async <T>() => response.json as T,
 	text: async () => response.text,

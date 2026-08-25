@@ -10,6 +10,7 @@ export interface FileMetadata {
 	starred: boolean;
 	properties: Record<string, string>;
 	modifiedTime: string;
+	trashed: boolean;
 }
 
 type StringSearch = string | { contains: string } | { not: string };
@@ -211,7 +212,17 @@ export const getDriveClient = (t: ObsidianGoogleDrive) => {
 		);
 	};
 
-	const getRootFolderId = async () => {
+	const persistRootFolderId = async (id: string) => {
+		if (t.settings.rootFolderId === id) return;
+		t.settings.rootFolderId = id;
+		await t.saveSettings();
+	};
+
+	const getRootFolderId = async (verify = false) => {
+		if (!verify && t.settings.rootFolderId) {
+			return t.settings.rootFolderId;
+		}
+
 		const files = await searchFiles(
 			{
 				matches: [{ properties: { obsidian: 'vault' } }],
@@ -234,10 +245,13 @@ export const getDriveClient = (t: ObsidianGoogleDrive) => {
 				})
 				.json<{ id: string }>();
 			if (!rootFolder) return;
+			await persistRootFolderId(rootFolder.id);
 			return rootFolder.id;
-		} else {
-			return files[0]?.id as string;
 		}
+		const id = files[0]?.id;
+		if (!id) return;
+		await persistRootFolderId(id);
+		return id;
 	};
 
 	const createFolder = async ({

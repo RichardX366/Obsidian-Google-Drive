@@ -19,6 +19,7 @@ interface PluginSettings {
 	refreshToken: string;
 	operations: Record<string, 'create' | 'delete' | 'modify'>;
 	driveIdToPath: Record<string, string>;
+	rootFolderId: string;
 	lastSyncedAt: number;
 	changesToken: string;
 }
@@ -27,6 +28,7 @@ const DEFAULT_SETTINGS: PluginSettings = {
 	refreshToken: '',
 	operations: {},
 	driveIdToPath: {},
+	rootFolderId: '',
 	lastSyncedAt: 0,
 	changesToken: '',
 };

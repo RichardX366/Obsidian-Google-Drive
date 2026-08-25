@@ -13,9 +13,13 @@ import { getDriveClient, splitPath, unSplitPath } from '../helpers/drive';
 
 const createPlugin = () =>
 	({
-		accessToken: { token: 'access-token', expiresAt: Date.now() + 3_600_000 },
+		accessToken: {
+			token: 'access-token',
+			expiresAt: Date.now() + 3_600_000,
+		},
 		app: { vault: { getName: () => 'Test vault' } },
-		settings: { refreshToken: 'refresh-token' },
+		settings: { refreshToken: 'refresh-token', rootFolderId: '' },
+		saveSettings: vi.fn(async () => undefined),
 	}) as never;
 
 describe('Drive path properties', () => {
@@ -35,7 +39,8 @@ describe('Drive batch deletion', () => {
 		requestUrl.mockImplementation(
 			async ({ body }: { body?: string | ArrayBuffer }) => {
 				const requestBody = typeof body === 'string' ? body : '';
-				const requestCount = requestBody.match(/^DELETE /gm)?.length ?? 0;
+				const requestCount =
+					requestBody.match(/^DELETE /gm)?.length ?? 0;
 				return {
 					status: 200,
 					headers: {},
@@ -101,15 +106,56 @@ describe('Drive batch deletion', () => {
 			headers: {},
 			arrayBuffer: new ArrayBuffer(0),
 			json: {},
-			text: [
-				'HTTP/1.1 204 No Content',
-				'HTTP/1.1 404 Not Found',
-			].join('\r\n'),
+			text: ['HTTP/1.1 204 No Content', 'HTTP/1.1 404 Not Found'].join(
+				'\r\n',
+			),
 		});
 		const drive = getDriveClient(createPlugin());
 
 		await expect(
 			drive.batchDelete(['file-1', 'missing-file']),
 		).resolves.toBeUndefined();
+	});
+});
+
+describe('Drive root folder persistence', () => {
+	it('validates a persisted root once and then reuses it', async () => {
+		requestUrl.mockResolvedValue({
+			status: 200,
+			headers: {},
+			arrayBuffer: new ArrayBuffer(0),
+			text: '',
+			json: {
+				files: [
+					{
+						id: 'root-id',
+						mimeType: 'application/vnd.google-apps.folder',
+						trashed: false,
+						properties: {
+							obsidian: 'vault',
+							vault: 'Test vault',
+						},
+					},
+				],
+			},
+		});
+		const plugin = {
+			accessToken: {
+				token: 'access-token',
+				expiresAt: Date.now() + 3_600_000,
+			},
+			app: { vault: { getName: () => 'Test vault' } },
+			settings: {
+				refreshToken: 'refresh-token',
+			},
+			saveSettings: vi.fn(async () => undefined),
+		};
+		const drive = getDriveClient(plugin as never);
+
+		await expect(drive.getRootFolderId(true)).resolves.toBe('root-id');
+		await expect(drive.getRootFolderId()).resolves.toBe('root-id');
+
+		expect(requestUrl).toHaveBeenCalledOnce();
+		expect(plugin.saveSettings).toHaveBeenCalledOnce();
 	});
 });

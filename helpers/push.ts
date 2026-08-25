@@ -267,6 +267,10 @@ export const push = async (t: ObsidianGoogleDrive) => {
 	try {
 
 	if (!(await pull(t, true))) return;
+	if (!(await t.drive.getRootFolderId(true))) {
+		new Notice('Could not verify the Google Drive vault folder.');
+		return;
+	}
 
 	const operations = Object.entries(t.settings.operations);
 

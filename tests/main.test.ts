@@ -34,6 +34,7 @@ const createPlugin = () =>
 			refreshToken: 'refresh',
 			operations: {},
 			driveIdToPath: {},
+			rootFolderId: '',
 			lastSyncedAt: 0,
 			changesToken: 'old-token',
 		},
