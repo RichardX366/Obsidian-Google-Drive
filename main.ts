@@ -447,7 +447,7 @@ class SettingsTab extends PluginSettingTab {
 			},
 			{
 				name: 'Client ID',
-				desc: 'Optional OAuth client ID sent to the access token endpoint.',
+				desc: 'Optional OAuth client ID. When both a client ID and client secret are set, the plugin exchanges refresh tokens directly with Google.',
 				control: {
 					type: 'text',
 					key: 'clientId',
@@ -456,7 +456,7 @@ class SettingsTab extends PluginSettingTab {
 			},
 			{
 				name: 'Client secret',
-				desc: 'Optional OAuth client secret sent to the access token endpoint.',
+				desc: 'Optional OAuth client secret. When both a client ID and client secret are set, the plugin exchanges refresh tokens directly with Google.',
 				control: {
 					type: 'text',
 					key: 'clientSecret',

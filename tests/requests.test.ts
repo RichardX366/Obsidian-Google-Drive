@@ -106,12 +106,38 @@ describe('refreshAccessToken', () => {
 			expiresAt: 3_601_000,
 		});
 		expect(mocks.requestUrl).toHaveBeenCalledWith(
+			{
+				url: 'https://oauth2.googleapis.com/token',
+				method: 'POST',
+				contentType: 'application/x-www-form-urlencoded',
+				body: new URLSearchParams({
+					client_id: 'custom-client-id',
+					client_secret: 'custom-client-secret',
+					grant_type: 'refresh_token',
+					refresh_token: 'saved-token',
+				}).toString(),
+				throw: false,
+			},
+		);
+	});
+
+	it('uses the configured endpoint unless both custom credentials exist', async () => {
+		mocks.requestUrl.mockResolvedValue(
+			response(200, { access_token: 'access', expires_in: 3600 }),
+		);
+		const plugin = createPlugin();
+		plugin.settings.clientSecret = '';
+
+		await refreshAccessToken(plugin as never);
+
+		expect(mocks.requestUrl).toHaveBeenCalledWith(
 			expect.objectContaining({
 				url: 'https://tokens.example.com/access',
+				contentType: 'application/json',
 				body: JSON.stringify({
 					refresh_token: 'saved-token',
 					clientId: 'custom-client-id',
-					clientSecret: 'custom-client-secret',
+					clientSecret: '',
 				}),
 			}),
 		);
