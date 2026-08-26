@@ -1,7 +1,6 @@
-import ky from "ky";
-import ObsidianGoogleDrive from "main";
-import { getDriveKy } from "./ky";
-import { TAbstractFile, TFolder } from "obsidian";
+import type ObsidianGoogleDrive from '../main';
+import { getDriveAgent } from './requests';
+import { requestUrl, TAbstractFile, TFolder } from 'obsidian';
 
 export interface FileMetadata {
 	id: string;
@@ -11,6 +10,7 @@ export interface FileMetadata {
 	starred: boolean;
 	properties: Record<string, string>;
 	modifiedTime: string;
+	trashed: boolean;
 }
 
 type StringSearch = string | { contains: string } | { not: string };
@@ -26,51 +26,97 @@ interface QueryMatch {
 	modifiedTime?: DateComparison;
 }
 
-export const folderMimeType = "application/vnd.google-apps.folder";
+interface Change {
+	kind: string;
+	removed: boolean;
+	file: FileMetadata;
+	fileId: string;
+	time: string;
+}
+
+export const folderMimeType = 'application/vnd.google-apps.folder';
 
 const BLACKLISTED_CONFIG_FILES = [
-	"graph.json",
-	"workspace.json",
-	"workspace-mobile.json",
+	'graph.json',
+	'workspace.json',
+	'workspace-mobile.json',
 ];
 
 const WHITELISTED_PLUGIN_FILES = [
-	"manifest.json",
-	"styles.css",
-	"main.js",
-	"data.json",
+	'manifest.json',
+	'styles.css',
+	'main.js',
+	'data.json',
 ];
 
+const escapeQueryValue = (value: string) =>
+	value.replaceAll('\\', '\\\\').replaceAll("'", "\\'");
+
 const stringSearchToQuery = (search: StringSearch) => {
-	if (typeof search === "string") return `='${search}'`;
-	if ("contains" in search) return ` contains '${search.contains}'`;
-	if ("not" in search) return `!='${search.not}'`;
+	if (typeof search === 'string') return `='${escapeQueryValue(search)}'`;
+	if ('contains' in search) {
+		return ` contains '${escapeQueryValue(search.contains)}'`;
+	}
+	if ('not' in search) return `!='${escapeQueryValue(search.not)}'`;
+	return;
 };
 
 const queryHandlers = {
-	name: (name: StringSearch) => "name" + stringSearchToQuery(name),
+	name: (name: StringSearch) => 'name' + stringSearchToQuery(name),
 	mimeType: (mimeType: StringSearch) =>
-		"mimeType" + stringSearchToQuery(mimeType),
-	parent: (parent: string) => `'${parent}' in parents`,
+		'mimeType' + stringSearchToQuery(mimeType),
+	parent: (parent: string) => `'${escapeQueryValue(parent)}' in parents`,
 	starred: (starred: boolean) => `starred=${starred}`,
-	query: (query: string) => `fullText contains '${query}'`,
+	query: (query: string) => `fullText contains '${escapeQueryValue(query)}'`,
 	properties: (properties: Record<string, string>) =>
-		Object.entries(properties).map(
-			([key, value]) =>
-				`properties has { key='${key}' and value='${value}' }`
-		),
+		Object.entries(properties)
+			.map(
+				([key, value]) =>
+					`properties has { key='${escapeQueryValue(key)}' and value='${escapeQueryValue(value)}' }`,
+			)
+			.join(' and '),
 	modifiedTime: (modifiedTime: DateComparison) => {
-		if ("eq" in modifiedTime) return `modifiedTime='${modifiedTime.eq}'`;
-		if ("gt" in modifiedTime) return `modifiedTime>'${modifiedTime.gt}'`;
-		if ("lt" in modifiedTime) return `modifiedTime<'${modifiedTime.lt}'`;
+		if ('eq' in modifiedTime) return `modifiedTime='${modifiedTime.eq}'`;
+		if ('gt' in modifiedTime) return `modifiedTime>'${modifiedTime.gt}'`;
+		if ('lt' in modifiedTime) return `modifiedTime<'${modifiedTime.lt}'`;
+		return;
 	},
 };
 
 export const fileListToMap = (files: { id: string; name: string }[]) =>
 	Object.fromEntries(files.map(({ id, name }) => [name, id]));
 
+export const splitPath = (path: string) => {
+	const encoder = new TextEncoder();
+	let p = '';
+	const output: Record<string, string> = {};
+	let i = 1;
+	for (const char of path) {
+		if (encoder.encode(p + char).length > 100) {
+			const key = i === 1 ? 'path' : `path${i}`;
+			output[key] = p;
+			p = '';
+			i++;
+		}
+		p += char;
+	}
+	const key = i === 1 ? 'path' : `path${i}`;
+	output[key] = p;
+	return output;
+};
+
+export const unSplitPath = (properties: Record<string, string>) => {
+	let path = properties.path || '';
+	let i = 2;
+	while (properties[`path${i}`]) {
+		path += properties[`path${i}`];
+		i++;
+	}
+	return path;
+};
+
 export const getDriveClient = (t: ObsidianGoogleDrive) => {
-	const drive = getDriveKy(t);
+	const drive = getDriveAgent(t);
 
 	const getQuery = (matches: QueryMatch[]) =>
 		encodeURIComponent(
@@ -81,38 +127,38 @@ export const getDriveClient = (t: ObsidianGoogleDrive) => {
 							value === undefined
 								? []
 								: Array.isArray(value)
-								? value.map((v) => [key, v])
-								: [[key, value]]
+									? value.map((v) => [key, v as string])
+									: [[key, value]],
 					);
 					return `(${entries
 						.map(([key, value]) =>
 							queryHandlers[key as keyof QueryMatch](
-								value as never
-							)
+								value as never,
+							),
 						)
-						.join(" and ")})`;
+						.join(' and ')})`;
 				})
 				.join(
-					" or "
-				)}) and trashed=false and properties has { key='vault' and value='${t.app.vault.getName()}' }`
+					' or ',
+				)}) and trashed=false and properties has { key='vault' and value='${escapeQueryValue(t.app.vault.getName())}' }`,
 		);
 
 	const paginateFiles = async ({
 		matches,
 		pageToken,
-		order = "descending",
+		order = 'descending',
 		pageSize = 30,
 		include = [
-			"id",
-			"name",
-			"mimeType",
-			"starred",
-			"description",
-			"properties",
+			'id',
+			'name',
+			'mimeType',
+			'starred',
+			'description',
+			'properties',
 		],
 	}: {
 		matches?: QueryMatch[];
-		order?: "ascending" | "descending";
+		order?: 'ascending' | 'descending';
 		pageToken?: string;
 		pageSize?: number;
 		include?: (keyof FileMetadata)[];
@@ -120,17 +166,21 @@ export const getDriveClient = (t: ObsidianGoogleDrive) => {
 		const files = await drive
 			.get(
 				`drive/v3/files?fields=nextPageToken,files(${include.join(
-					","
+					',',
 				)})&pageSize=${pageSize}&q=${
-					matches ? getQuery(matches) : "trashed=false"
+					matches
+						? getQuery(matches)
+						: "trashed=false and properties has { key='vault' and value='" +
+							escapeQueryValue(t.app.vault.getName()) +
+							"'}"
 				}${
 					matches?.find(({ query }) => query)
-						? ""
-						: "&orderBy=name" +
-						  (order === "ascending" ? "" : " desc")
-				}${pageToken ? "&pageToken=" + pageToken : ""}`
+						? ''
+						: '&orderBy=name' +
+							(order === 'ascending' ? '' : ' desc')
+				}${pageToken ? '&pageToken=' + pageToken : ''}`,
 			)
-			.json<any>();
+			.json();
 		if (!files) return;
 		return files as {
 			nextPageToken?: string;
@@ -141,10 +191,10 @@ export const getDriveClient = (t: ObsidianGoogleDrive) => {
 	const searchFiles = async (
 		data: {
 			matches?: QueryMatch[];
-			order?: "ascending" | "descending";
+			order?: 'ascending' | 'descending';
 			include?: (keyof FileMetadata)[];
 		},
-		includeObsidian = false
+		includeObsidian = false,
 	) => {
 		const files = await paginateFiles({ ...data, pageSize: 1000 });
 		if (!files) return;
@@ -160,19 +210,29 @@ export const getDriveClient = (t: ObsidianGoogleDrive) => {
 			files.nextPageToken = nextPage.nextPageToken;
 		}
 
-		if (includeObsidian) return files.files as FileMetadata[];
+		if (includeObsidian) return files.files;
 
 		return files.files.filter(
-			({ properties }) => properties?.obsidian !== "vault"
-		) as FileMetadata[];
+			({ properties }) => properties?.obsidian !== 'vault',
+		);
 	};
 
-	const getRootFolderId = async () => {
+	const persistRootFolderId = async (id: string) => {
+		if (t.settings.rootFolderId === id) return;
+		t.settings.rootFolderId = id;
+		await t.saveSettings();
+	};
+
+	const getRootFolderId = async (verify = false) => {
+		if (!verify && t.settings.rootFolderId) {
+			return t.settings.rootFolderId;
+		}
+
 		const files = await searchFiles(
 			{
-				matches: [{ properties: { obsidian: "vault" } }],
+				matches: [{ properties: { obsidian: 'vault' } }],
 			},
-			true
+			true,
 		);
 		if (!files) return;
 		if (!files.length) {
@@ -181,19 +241,22 @@ export const getDriveClient = (t: ObsidianGoogleDrive) => {
 					json: {
 						name: t.app.vault.getName(),
 						mimeType: folderMimeType,
-						description: "Obsidian Vault: " + t.app.vault.getName(),
+						description: 'Obsidian Vault: ' + t.app.vault.getName(),
 						properties: {
-							obsidian: "vault",
+							obsidian: 'vault',
 							vault: t.app.vault.getName(),
 						},
 					},
 				})
-				.json<any>();
+				.json<{ id: string }>();
 			if (!rootFolder) return;
-			return rootFolder.id as string;
-		} else {
-			return files[0].id as string;
+			await persistRootFolderId(rootFolder.id);
+			return rootFolder.id;
 		}
+		const id = files[0]?.id;
+		if (!id) return;
+		await persistRootFolderId(id);
+		return id;
 	};
 
 	const createFolder = async ({
@@ -228,16 +291,16 @@ export const getDriveClient = (t: ObsidianGoogleDrive) => {
 					modifiedTime,
 				},
 			})
-			.json<any>();
+			.json<{ id: string }>();
 		if (!folder) return;
-		return folder.id as string;
+		return folder.id;
 	};
 
 	const uploadFile = async (
 		file: Blob,
 		name: string,
 		parent?: string,
-		metadata?: Partial<Omit<FileMetadata, "id">>
+		metadata?: Partial<Omit<FileMetadata, 'id'>>,
 	) => {
 		if (!parent) {
 			parent = await getRootFolderId();
@@ -252,7 +315,7 @@ export const getDriveClient = (t: ObsidianGoogleDrive) => {
 
 		const form = new FormData();
 		form.append(
-			"metadata",
+			'metadata',
 			new Blob(
 				[
 					JSON.stringify({
@@ -262,59 +325,59 @@ export const getDriveClient = (t: ObsidianGoogleDrive) => {
 						...metadata,
 					}),
 				],
-				{ type: "application/json" }
-			)
+				{ type: 'application/json' },
+			),
 		);
-		form.append("file", file);
+		form.append('file', file);
 
 		const result = await drive
 			.post(`upload/drive/v3/files?uploadType=multipart&fields=id`, {
 				body: form,
 			})
-			.json<any>();
+			.json<{ id: string }>();
 		if (!result) return;
 
-		return result.id as string;
+		return result.id;
 	};
 
 	const updateFile = async (
 		id: string,
 		newContent: Blob,
-		newMetadata: Partial<Omit<FileMetadata, "id">> = {}
+		newMetadata: Partial<Omit<FileMetadata, 'id'>> = {},
 	) => {
 		const form = new FormData();
 		form.append(
-			"metadata",
+			'metadata',
 			new Blob([JSON.stringify(newMetadata)], {
-				type: "application/json",
-			})
+				type: 'application/json',
+			}),
 		);
-		form.append("file", newContent);
+		form.append('file', newContent);
 
 		const result = await drive
 			.patch(
 				`upload/drive/v3/files/${id}?uploadType=multipart&fields=id`,
 				{
 					body: form,
-				}
+				},
 			)
-			.json<any>();
+			.json<{ id: string }>();
 		if (!result) return;
 
-		return result.id as string;
+		return result.id;
 	};
 
 	const updateFileMetadata = async (
 		id: string,
-		metadata: Partial<Omit<FileMetadata, "id">>
+		metadata: Partial<Omit<FileMetadata, 'id'>>,
 	) => {
 		const result = await drive
 			.patch(`drive/v3/files/${id}`, {
 				json: metadata,
 			})
-			.json<any>();
+			.json<{ id: string }>();
 		if (!result) return;
-		return result.id as string;
+		return result.id;
 	};
 
 	const deleteFile = async (id: string) => {
@@ -331,60 +394,73 @@ export const getDriveClient = (t: ObsidianGoogleDrive) => {
 
 	const idFromPath = async (path: string) => {
 		const files = await searchFiles({
-			matches: [{ properties: { path } }],
+			matches: [{ properties: splitPath(path) }],
 		});
 		if (!files?.length) return;
-		return files[0].id as string;
+		return files[0]?.id as string;
 	};
 
 	const idsFromPaths = async (paths: string[]) => {
 		const files = await searchFiles({
-			matches: paths.map((path) => ({ properties: { path } })),
+			matches: paths.map((path) => ({ properties: splitPath(path) })),
 		});
 		if (!files) return;
 		return files.map((file) => ({
 			id: file.id,
-			path: file.properties.path,
+			path: unSplitPath(file.properties),
 		}));
 	};
 
 	const batchDelete = async (ids: string[]) => {
-		const body = new FormData();
+		if (!ids.length) return true;
 
-		// Loop through file IDs to create each delete request
-		ids.forEach((fileId, index) => {
-			const deleteRequest = [
-				`--batch_boundary`,
-				"Content-Type: application/http",
-				"",
-				`DELETE /drive/v3/files/${fileId} HTTP/1.1`,
-				"",
-				"",
-			].join("\r\n");
+		for (let offset = 0; offset < ids.length; offset += 100) {
+			const batch = ids.slice(offset, offset + 100);
+			const boundary = `batch_${crypto.randomUUID()}`;
+			const body =
+				batch
+					.map((fileId, index) =>
+						[
+							`--${boundary}`,
+							'Content-Type: application/http',
+							`Content-ID: <request_${offset + index + 1}>`,
+							'',
+							`DELETE /drive/v3/files/${fileId} HTTP/1.1`,
+							'',
+						].join('\r\n'),
+					)
+					.concat(`--${boundary}--`)
+					.join('\r\n') + '\r\n';
 
-			body.append(`request_${index + 1}`, deleteRequest);
-		});
-
-		body.append("", "--batch_boundary--");
-
-		const result = await drive
-			.post(`batch/drive/v3`, {
+			const response = await drive.post(`batch/drive/v3`, {
 				headers: {
-					"Content-Type": "multipart/mixed; boundary=batch_boundary",
+					'Content-Type': `multipart/mixed; boundary=${boundary}`,
 				},
 				body,
-			})
-			.text();
-		if (!result) return;
-		return result;
+			});
+			if (!response.ok) return;
+
+			const result = await response.text();
+			const statuses = Array.from(
+				result.matchAll(/HTTP\/1\.1 (\d{3})/g),
+				(match) => Number(match[1]),
+			);
+			if (
+				statuses.length !== batch.length ||
+				statuses.some((status) => status < 200 || status >= 300)
+			) {
+				return;
+			}
+		}
+		return true;
 	};
 
 	const getChangesStartToken = async () => {
 		const result = await drive
 			.get(`drive/v3/changes/startPageToken`)
-			.json<any>();
+			.json<{ startPageToken: string }>();
 		if (!result) return;
-		return result.startPageToken as string;
+		return result.startPageToken;
 	};
 
 	const getChanges = async (startToken: string) => {
@@ -395,11 +471,15 @@ export const getDriveClient = (t: ObsidianGoogleDrive) => {
 				.get(
 					`drive/v3/changes?${new URLSearchParams({
 						pageToken: token,
-						pageSize: "1000",
-						includeRemoved: "true",
-					}).toString()}`
+						pageSize: '1000',
+						includeRemoved: 'true',
+					}).toString()}`,
 				)
-				.json<any>();
+				.json<{
+					changes: Change[];
+					nextPageToken?: string;
+					newStartPageToken?: string;
+				}>();
 
 		const result = await request(startToken);
 		if (!result) return;
@@ -411,41 +491,33 @@ export const getDriveClient = (t: ObsidianGoogleDrive) => {
 			result.nextPageToken = nextPage.nextPageToken;
 		}
 
-		return result.changes as {
-			kind: string;
-			removed: boolean;
-			file: FileMetadata;
-			fileId: string;
-			time: string;
-		}[];
+		return result.changes;
 	};
 
 	const deleteFilesMinimumOperations = async (files: TAbstractFile[]) => {
-		const folders = files.filter(
-			(file) => file instanceof TFolder
-		) as TFolder[];
+		const folders = files.filter((file) => file instanceof TFolder);
 
 		if (folders.length) {
 			const maxDepth = Math.max(
-				...folders.map(({ path }) => path.split("/").length)
+				...folders.map(({ path }) => path.split('/').length),
 			);
 
 			for (let depth = 1; depth <= maxDepth; depth++) {
 				const foldersToDelete = files.filter(
 					(file) =>
 						file instanceof TFolder &&
-						file.path.split("/").length === depth
+						file.path.split('/').length === depth,
 				);
 				await Promise.all(
-					foldersToDelete.map((folder) => t.deleteFile(folder))
+					foldersToDelete.map((folder) => t.deleteFile(folder)),
 				);
 				foldersToDelete.forEach(
 					(folder) =>
 						(files = files.filter(
 							({ path }) =>
-								!path.startsWith(folder.path + "/") &&
-								path !== folder.path
-						))
+								!path.startsWith(folder.path + '/') &&
+								path !== folder.path,
+						)),
 				);
 			}
 		}
@@ -460,7 +532,7 @@ export const getDriveClient = (t: ObsidianGoogleDrive) => {
 
 		const [configFiles, plugins] = await Promise.all([
 			adapter.list(vault.configDir),
-			adapter.list(vault.configDir + "/plugins"),
+			adapter.list(vault.configDir + '/plugins'),
 		]);
 
 		await Promise.all(
@@ -468,8 +540,8 @@ export const getDriveClient = (t: ObsidianGoogleDrive) => {
 				.filter(
 					(path) =>
 						!BLACKLISTED_CONFIG_FILES.includes(
-							fileNameFromPath(path)
-						)
+							fileNameFromPath(path),
+						),
 				)
 				.map(async (path) => {
 					const file = await adapter.stat(path);
@@ -484,8 +556,8 @@ export const getDriveClient = (t: ObsidianGoogleDrive) => {
 							files.files
 								.filter((path) =>
 									WHITELISTED_PLUGIN_FILES.includes(
-										fileNameFromPath(path)
-									)
+										fileNameFromPath(path),
+									),
 								)
 								.map(async (path) => {
 									const file = await adapter.stat(path);
@@ -495,10 +567,10 @@ export const getDriveClient = (t: ObsidianGoogleDrive) => {
 									) {
 										configFilesToSync.push(path);
 									}
-								})
+								}),
 						);
-					})
-				)
+					}),
+				),
 		);
 
 		return configFilesToSync;
@@ -528,16 +600,19 @@ export const getDriveClient = (t: ObsidianGoogleDrive) => {
 
 export const checkConnection = async () => {
 	try {
-		const result = await ky.get("https://ogd.richardxiong.com/api/ping");
-		return result.ok;
+		const result = await requestUrl({
+			url: 'https://www.google.com/generate_204',
+			throw: false,
+		});
+		return result.status >= 200 && result.status < 300;
 	} catch {
 		return false;
 	}
 };
 
-export const batchAsyncs = async (
-	requests: (() => Promise<any>)[],
-	batchSize = 10
+export const batchAsync = async <T = unknown>(
+	requests: (() => Promise<T>)[],
+	batchSize = 10,
 ) => {
 	const results = [];
 	for (let i = 0; i < requests.length; i += batchSize) {
@@ -551,37 +626,38 @@ export const getSyncMessage = (
 	min: number,
 	max: number,
 	completed: number,
-	total: number
+	total: number,
 ) => `Syncing (${Math.floor(min + (max - min) * (completed / total))}%)`;
 
-export const fileNameFromPath = (path: string) => path.split("/").slice(-1)[0];
+export const fileNameFromPath = (path: string) =>
+	path.split('/').slice(-1)[0] as string;
 
 /**
  * @returns Batches in increasing order of depth
  */
-export const foldersToBatches: {
-	(folders: string[]): string[][];
-	(folders: TFolder[]): TFolder[][];
-} = (folders) => {
+export const foldersToBatches = <T = string | TFolder>(folders: T[]) => {
 	const batches: (typeof folders)[] = new Array(
 		Math.max(
 			...folders.map(
 				(folder) =>
-					(folder instanceof TFolder ? folder.path : folder).split(
-						"/"
-					).length
-			)
-		)
+					(
+						(folder instanceof TFolder
+							? folder.path
+							: folder) as string
+					).split('/').length,
+			),
+		),
 	)
 		.fill(0)
 		.map(() => []);
 
 	folders.forEach((folder) => {
 		batches[
-			(folder instanceof TFolder ? folder.path : folder).split("/")
-				.length - 1
-		].push(folder as any);
+			(
+				(folder instanceof TFolder ? folder.path : folder) as string
+			).split('/').length - 1
+		]?.push(folder);
 	});
 
-	return batches as any;
+	return batches;
 };
