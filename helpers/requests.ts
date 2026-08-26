@@ -139,7 +139,7 @@ export const refreshAccessToken = async (
 				: {
 						url:
 							t.settings.accessTokenUrl ||
-							'https://ogd.richardxiong.com/api/access',
+							'https://ogd-server.richardxiong.com/api/access',
 						method: 'POST',
 						contentType: 'application/json',
 						body: JSON.stringify({

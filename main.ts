@@ -427,11 +427,12 @@ class SettingsTab extends PluginSettingTab {
 			},
 			{
 				name: 'Access token endpoint',
-				desc: 'Service used to exchange the refresh token for a Google access token. The refresh token is sent to this URL. This is just so you can self-host the access token refresher. The code to host the website is available at https://github.com/RichardX366/Obsidian-Google-Drive-website. Defaults to my hosted service at https://ogd.richardxiong.com/api/access.',
+				desc: 'Service used to exchange the refresh token for a Google access token. The refresh token is sent to this URL. This is just so you can self-host the access token refresher. The code to host the website is available at https://github.com/RichardX366/Obsidian-Google-Drive-website. Defaults to my hosted service at https://ogd-server.richardxiong.com/api/access.',
 				control: {
 					type: 'text',
 					key: 'accessTokenUrl',
-					placeholder: 'https://ogd.richardxiong.com/api/access',
+					placeholder:
+						'https://ogd-server.richardxiong.com/api/access',
 					validate: (value: string) => {
 						if (!value) return;
 						try {
