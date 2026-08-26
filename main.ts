@@ -13,6 +13,7 @@ import {
 	TAbstractFile,
 	TFile,
 } from 'obsidian';
+import { fixDrivePath } from './helpers/fix_drive_path';
 
 interface PluginSettings {
 	refreshToken: string;
@@ -91,6 +92,12 @@ export default class ObsidianGoogleDrive extends Plugin {
 			id: 'reset',
 			name: 'Reset local vault to Google Drive',
 			callback: () => reset(this),
+		});
+
+		this.addCommand({
+			id: 'fix-drive-path',
+			name: 'Fix Google Drive paths',
+			callback: () => fixDrivePath(this),
 		});
 
 		this.registerEvent(
