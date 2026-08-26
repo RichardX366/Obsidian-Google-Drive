@@ -53,8 +53,9 @@ This is an unofficial sync plugin for Obsidian, specifically for Google Drive.
     - If you encounter a conflict, the plugin will automatically resolve it with local file prioritization
 - Do **NOT** change the Obsidian configuration folder
     - If you really want to, make a new vault, change the folder, enable the plugin, and copy your files over (you can move the contents of .obsidian to the new folder through file explorer)
-- This only accesses the Google Drive API to sync files and does not access or store any data outside of the user's device
-- This only accesses [https://ogd.richardxiong.com](https://ogd.richardxiong.com) to convert refresh tokens into access tokens (while hiding the client secret) and to check internet connectivity with a simple ping request
+- Vault files and configuration files selected for syncing are stored in Google Drive. They are sent directly between the user's device and the Google Drive API
+- By default, the plugin accesses [https://ogd.richardxiong.com](https://ogd.richardxiong.com) to convert the refresh token into an access token (while hiding the client secret) and to check internet connectivity with a simple ping request. Vault contents are not sent to this service
+- You can configure a self-hosted access token endpoint in the plugin settings. The refresh token and any optional client ID and client secret are sent to the configured endpoint
 
 ## Setup
 
@@ -69,7 +70,7 @@ Note: Instructions are also on this plugin's homepage with images at [https://og
 
 ## Use
 
-- After setup, the plugin will automatically sync your vault with Google Drive whenever Obsidian is open
+- After setup, the plugin will automatically pull changes from Google Drive once when Obsidian finishes opening the vault
     - This sync is from Google Drive TO Obsidian, not the other way around (pulling cloud files)
     - The plugin prioritizes unsynced local changes except for local file deletions (cloud file creation/modification will overwrite local deletion)
     - You can pull by running the `Pull from Google Drive` command
@@ -77,7 +78,8 @@ Note: Instructions are also on this plugin's homepage with images at [https://og
 - To sync local changes to Google Drive, click the sync button on the ribbon or run the `Push to Google Drive` command from the command palette
     - While you do not have to sync before you close Obsidian, we suggest doing so to ensure that Google Drive is up to date and no conflicts occur
     - This will pull changes before pushing changes to Google Drive
-- If you want to set your local vault state to the Google Drive state, run the `Set Local Vault to Google Drive` command
+- You can enable `Automatically push changes` in the plugin settings to push one minute after the most recent local file change. This setting is disabled by default
+- If you want to set your local vault state to the Google Drive state, run the `Reset local vault to Google Drive` command
 - If you mess with the vault's files while Obsidian is closed, try to revert any of the changes you made
 
 ## Multiple Vaults
