@@ -422,8 +422,17 @@ class SettingsTab extends PluginSettingTab {
 						await this.plugin.saveSettings();
 						new Notice('Refresh token saved! Beginning to sync.');
 						window.setTimeout(
-							() => void this.plugin.onload(),
-							1000,
+							() =>
+								void this.plugin
+									.onload()
+									.then(
+										() =>
+											new Notice(
+												'Sync complete! Please close settings and restart Obsidian to see the changes properly sync.',
+												0,
+											),
+									),
+							1_000,
 						);
 						return;
 					},
