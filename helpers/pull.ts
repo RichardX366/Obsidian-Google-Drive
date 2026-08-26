@@ -21,7 +21,15 @@ export const pull = async (t: ObsidianGoogleDrive, silenceNotices = false) => {
 		const { vault } = t.app;
 		const adapter = vault.adapter;
 
-		if (!t.accessToken.token) await refreshAccessToken(t);
+		if (!t.accessToken.token) {
+			if (!(await refreshAccessToken(t))) {
+				new Notice(
+					'Failed to refresh access token. Please re-authenticate.',
+				);
+				t.abortSync(syncNotice);
+				return false;
+			}
+		}
 
 		const recentlyModified = await t.drive.searchFiles({
 			include: ['id', 'modifiedTime', 'properties', 'mimeType'],

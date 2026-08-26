@@ -152,6 +152,9 @@ export const refreshAccessToken = async (
 		);
 
 		if ([400, 401, 403].includes(response.status)) {
+			console.error(
+				`Refresh token rejected (HTTP ${response.status}): ${response.text}`,
+			);
 			new Notice(
 				'Your refresh token was rejected. Please add a new refresh token and try again.',
 				0,
