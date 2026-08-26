@@ -125,25 +125,31 @@ export default class ObsidianGoogleDrive extends Plugin {
 			this.app.workspace.on('quit', () => this.saveSettings()),
 		);
 
-		this.app.workspace.onLayoutReady(() =>
+		this.app.workspace.onLayoutReady(() => {
 			this.registerEvent(
 				vault.on('create', this.handleCreate.bind(this)),
-			),
-		);
-		this.registerEvent(vault.on('delete', this.handleDelete.bind(this)));
-		this.registerEvent(vault.on('modify', this.handleModify.bind(this)));
-		this.registerEvent(vault.on('rename', this.handleRename.bind(this)));
+			);
+			this.registerEvent(
+				vault.on('delete', this.handleDelete.bind(this)),
+			);
+			this.registerEvent(
+				vault.on('modify', this.handleModify.bind(this)),
+			);
+			this.registerEvent(
+				vault.on('rename', this.handleRename.bind(this)),
+			);
 
-		void checkConnection().then(async (connected) => {
-			if (!connected) return;
+			void checkConnection().then(async (connected) => {
+				if (!connected) return;
 
-			this.syncing = true;
-			this.ribbonIcon.addClass('spin');
-			try {
-				if (await pull(this, true)) await this.endSync();
-			} finally {
-				if (this.syncing) this.abortSync();
-			}
+				this.syncing = true;
+				this.ribbonIcon.addClass('spin');
+				try {
+					if (await pull(this, true)) await this.endSync();
+				} finally {
+					if (this.syncing) this.abortSync();
+				}
+			});
 		});
 	}
 
