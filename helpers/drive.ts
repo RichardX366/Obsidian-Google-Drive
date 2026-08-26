@@ -170,9 +170,11 @@ export const getDriveClient = (t: ObsidianGoogleDrive) => {
 				)})&pageSize=${pageSize}&q=${
 					matches
 						? getQuery(matches)
-						: "trashed=false and properties has { key='vault' and value='" +
-							escapeQueryValue(t.app.vault.getName()) +
-							"'}"
+						: encodeURIComponent(
+								"trashed=false and properties has { key='vault' and value='" +
+									escapeQueryValue(t.app.vault.getName()) +
+									"'}",
+							)
 				}${
 					matches?.find(({ query }) => query)
 						? ''
