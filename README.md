@@ -86,8 +86,8 @@ Note: Instructions are also on this plugin's homepage with images at [https://og
 
 - The Google Drive folder that gets created upon setup is the root folder for the vault and is tagged with the vault name
     - It is named the same as your vault name, has a matching description, and stores the vault name internally
-    - You can rename the Google Drive folder without consequence
-    - You can also color the folder in Google Drive and place it wherever you please
+    - After the folder is created, you can move it anywhere within the same Google Drive account without affecting syncing
+    - You can also rename or color the folder in Google Drive without affecting syncing
     - Each file in the vault is also tagged with the vault name inside Google Drive's properties
 - Each vault is connected to the Google Drive folder that has the same tag/internal name
     - If you want multiple devices to sync to the same vault, the vault names must match
