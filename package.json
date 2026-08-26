@@ -1,6 +1,6 @@
 {
 	"name": "google-drive-sync",
-	"version": "2.2.2",
+	"version": "3.0.0",
 	"description": "This plugin allows for the use of Google Drive in syncing an Obsidian vault.",
 	"main": "main.js",
 	"type": "module",
