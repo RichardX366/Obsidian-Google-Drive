@@ -1,7 +1,7 @@
 {
 	"id": "google-drive-sync",
 	"name": "Google Drive Sync",
-	"version": "3.1.0",
+	"version": "3.1.1",
 	"minAppVersion": "1.13.0",
 	"description": "Syncs a vault into Google Drive for cross-platform use (works for iOS).",
 	"author": "Richard Xiong",
