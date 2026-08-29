@@ -56,3 +56,113 @@
 	color: var(--text-error);
 	font-weight: bolder;
 }
+
+/* Draggable quick-access toolbar pinned to the right edge. */
+.ogd-fab {
+	position: fixed;
+	right: 0;
+	z-index: var(--layer-notice);
+}
+
+.ogd-fab-launcher {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	width: var(--size-4-8);
+	height: var(--size-4-12);
+	padding: 0;
+	color: var(--text-normal);
+	background-color: var(--interactive-normal);
+	border: var(--border-width) solid var(--background-modifier-border);
+	border-right: none;
+	border-radius: var(--radius-l) 0 0 var(--radius-l);
+	box-shadow: var(--shadow-s);
+	cursor: grab;
+	touch-action: none;
+}
+
+.ogd-fab-launcher:hover {
+	background-color: var(--interactive-hover);
+}
+
+.ogd-fab-launcher:active {
+	cursor: grabbing;
+}
+
+.ogd-fab-launcher .svg-icon {
+	width: var(--icon-m);
+	height: var(--icon-m);
+}
+
+/* Absolute so opening the menu doesn't shift the button. */
+.ogd-fab-menu {
+	position: absolute;
+	right: 0;
+	bottom: calc(100% + var(--size-2-2));
+	display: flex;
+	flex-direction: column;
+	align-items: flex-end;
+	gap: var(--size-2-2);
+	transition:
+		opacity 150ms ease,
+		transform 150ms ease;
+}
+
+.ogd-fab.open-below .ogd-fab-menu {
+	bottom: auto;
+	top: calc(100% + var(--size-2-2));
+}
+
+/* Collapsed: slide the menu off the right edge. */
+.ogd-fab:not(.is-open) .ogd-fab-menu {
+	opacity: 0;
+	transform: translateX(100%);
+	visibility: hidden;
+	pointer-events: none;
+}
+
+.ogd-fab-item {
+	display: flex;
+	align-items: center;
+	gap: var(--size-2-3);
+	height: var(--size-4-12);
+	padding: 0 var(--size-4-4);
+	color: var(--text-normal);
+	background-color: var(--background-secondary);
+	border: var(--border-width) solid var(--background-modifier-border);
+	border-right: none;
+	border-radius: var(--radius-m) 0 0 var(--radius-m);
+	box-shadow: var(--shadow-s);
+	font-size: var(--font-ui-small);
+	white-space: nowrap;
+	cursor: pointer;
+}
+
+.ogd-fab-item:hover {
+	color: var(--interactive-accent);
+	background-color: var(--background-modifier-hover);
+}
+
+.ogd-fab-item-icon {
+	display: inline-flex;
+}
+
+.ogd-fab-item-icon .svg-icon {
+	width: var(--icon-s);
+	height: var(--icon-s);
+}
+
+/* Indent the settings action toggles so they read as sub-points. */
+.ogd-toolbar-actions {
+	margin-left: var(--size-4-4);
+	padding-left: var(--size-4-3);
+	border-left: var(--border-width) solid var(--background-modifier-border);
+}
+
+@media (max-width: 400px) {
+	.ogd-fab-item {
+		height: var(--size-4-10);
+		padding: 0 var(--size-4-3);
+		font-size: var(--font-ui-smaller);
+	}
+}
