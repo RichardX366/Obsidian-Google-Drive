@@ -23,6 +23,7 @@ This is an unofficial sync plugin for Obsidian, specifically for Google Drive.
 - Local file prioritization (automatically resolves conflicts)
 - Multiple vaults per Google account
 - Configuration syncing
+- Optional floating toolbar for quick access to sync commands
 
 ## New Devices
 
@@ -80,6 +81,7 @@ Note: Instructions are also on this plugin's homepage with images at [https://og
     - This will pull changes before pushing changes to Google Drive
 - You can enable `Automatically push changes` in the plugin settings to push one minute after the most recent local file change. This setting is disabled by default
 - If you want to set your local vault state to the Google Drive state, run the `Reset local vault to Google Drive` command
+- You can enable `Floating toolbar` in the plugin settings to show a draggable button on the right edge of the app. Clicking it expands a menu of quick-access sync actions (Push, Pull, Fix paths, Reset). Choose which actions appear under `Toolbar actions`; at least one must stay enabled. This setting is disabled by default
 - If you mess with the vault's files while Obsidian is closed, try to revert any of the changes you made
 
 ## Multiple Vaults
