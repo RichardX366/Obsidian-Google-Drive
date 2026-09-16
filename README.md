@@ -2,6 +2,10 @@
 
 This is an unofficial sync plugin for Obsidian, specifically for Google Drive.
 
+## Update Notice
+
+If you are updating your plugin from 2.x.x to 3.x.x, you should run "Fix Google Drive paths" and then sync since there was an issue with handling deleted files in Google Drive in 2.x.x. Running this command fixes Obsidian's understanding of Google Drive's file system and should fix a good amount of syncing errors.
+
 ## Disclaimer
 
 - This is **not** the [official sync service](https://obsidian.md/sync) provided by Obsidian
